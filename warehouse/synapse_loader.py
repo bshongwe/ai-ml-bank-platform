@@ -2,6 +2,7 @@
 from pathlib import Path
 from datetime import datetime, timezone
 import os
+import json
 import pyodbc
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
@@ -10,10 +11,12 @@ from azure.storage.blob import BlobServiceClient
 class SynapseLoader:
     """Load Gold layer data into Azure Synapse Analytics."""
 
-    def __init__(self, synapse_server: str, database: str, storage_account: str):
+    def __init__(self, synapse_server: str, database: str, storage_account: str,
+                 log_path: Path = Path('warehouse/load_stats.jsonl')):
         self.synapse_server = synapse_server
         self.database = database
         self.storage_account = storage_account
+        self.log_path = log_path
         self.credential = DefaultAzureCredential()
         self.blob_client = BlobServiceClient(
             account_url=f"https://{storage_account}.blob.core.windows.net",
@@ -40,9 +43,24 @@ class SynapseLoader:
         return f"https://{self.storage_account}.blob.core.windows.net/" \
                f"{container}/{blob_name}"
 
+    def _log_load_stats(self, table_name: str, rows_loaded: int,
+                        load_type: str, duration_sec: float) -> None:
+        """Log load statistics for audit and monitoring."""
+        stats = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'table': table_name,
+            'rows_loaded': rows_loaded,
+            'load_type': load_type,
+            'duration_sec': round(duration_sec, 2),
+            'database': self.database
+        }
+        with open(self.log_path, 'a') as f:
+            f.write(json.dumps(stats) + '\n')
+
     def load_table(self, parquet_path: Path, table_name: str,
                    container: str, load_type: str = 'incremental') -> None:
         """Load parquet into Synapse table."""
+        start_time = datetime.now(timezone.utc)
         blob_url = self._upload_to_blob(parquet_path, container)
 
         conn = self._get_connection()
@@ -64,23 +82,55 @@ class SynapseLoader:
 
         cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
         count = cursor.fetchone()[0]
-        print(f"Loaded {table_name}: {count} rows")
+
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        self._log_load_stats(table_name, count, load_type, duration)
+        print(f"Loaded {table_name}: {count} rows in {duration:.2f}s")
 
         cursor.close()
         conn.close()
 
-    def create_partitions(self, table_name: str, partition_col: str) -> None:
-        """Create table partitions for performance."""
+    def create_partitions(self, table_name: str, partition_col: str,
+                          partition_scheme: str = 'DAILY') -> None:
+        """Create table partitions for query performance."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        partition_sql = f"""
-        ALTER TABLE {table_name}
-        SWITCH PARTITION $PARTITION.{partition_col}(GETDATE())
-        TO {table_name}_staging PARTITION $PARTITION.{partition_col}(GETDATE())
-        """
-        cursor.execute(partition_sql)
-        conn.commit()
+        if partition_scheme == 'DAILY':
+            partition_sql = f"""
+            CREATE PARTITION FUNCTION pf_{table_name} (DATE)
+            AS RANGE RIGHT FOR VALUES (
+                DATEADD(DAY, -30, CAST(GETDATE() AS DATE)),
+                DATEADD(DAY, -7, CAST(GETDATE() AS DATE)),
+                CAST(GETDATE() AS DATE)
+            )
+            """
+        elif partition_scheme == 'WEEKLY':
+            partition_sql = f"""
+            CREATE PARTITION FUNCTION pf_{table_name} (DATE)
+            AS RANGE RIGHT FOR VALUES (
+                DATEADD(WEEK, -12, CAST(GETDATE() AS DATE)),
+                DATEADD(WEEK, -4, CAST(GETDATE() AS DATE)),
+                CAST(GETDATE() AS DATE)
+            )
+            """
+        else:
+            raise ValueError(f"Unsupported partition scheme: {partition_scheme}")
+
+        try:
+            cursor.execute(partition_sql)
+            cursor.execute(f"""
+                CREATE PARTITION SCHEME ps_{table_name}
+                AS PARTITION pf_{table_name}
+                ALL TO ([PRIMARY])
+            """)
+            conn.commit()
+            print(f"Created {partition_scheme} partitions for {table_name}")
+        except pyodbc.Error as e:
+            if 'already exists' in str(e):
+                print(f"Partitions already exist for {table_name}")
+            else:
+                raise
 
         cursor.close()
         conn.close()

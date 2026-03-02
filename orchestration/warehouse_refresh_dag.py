@@ -64,6 +64,10 @@ def load_to_synapse(**context):
         storage_account=os.getenv('AZURE_STORAGE_ACCOUNT')
     )
 
+    loader.create_partitions('agg_fraud_metrics', 'hour_bucket', 'DAILY')
+    loader.create_partitions('agg_risk_distribution', 'date', 'DAILY')
+    loader.create_partitions('agg_churn_cohorts', 'week', 'WEEKLY')
+
     loader.load_table(
         Path('warehouse/agg_fraud_metrics.parquet'),
         'agg_fraud_metrics',
