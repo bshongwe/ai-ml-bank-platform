@@ -1,0 +1,7 @@
+{
+  "transaction_id": "uuid",
+  "fraud_score": 0.92,
+  "confidence": 0.88,
+  "model_version": "fraud_v1",
+  "scored_at": "timestamp"
+}
