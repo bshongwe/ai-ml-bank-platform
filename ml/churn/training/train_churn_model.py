@@ -15,6 +15,8 @@ from datetime import datetime
 
 # Constants
 N_ESTIMATORS = 100
+MIN_SAMPLES_LEAF = 10
+MAX_FEATURES = 'sqrt'
 RANDOM_STATE = 42
 TRAIN_CUTOFF_DATE = '2026-01-01'
 THRESHOLD = 0.3
@@ -58,6 +60,8 @@ def prepare_features(train, test):
 def train_model(X_train, y_train):
     model = RandomForestClassifier(
         n_estimators=N_ESTIMATORS,
+        min_samples_leaf=MIN_SAMPLES_LEAF,
+        max_features=MAX_FEATURES,
         random_state=RANDOM_STATE,
         class_weight='balanced'
     )
