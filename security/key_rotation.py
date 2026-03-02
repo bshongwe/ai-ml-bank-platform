@@ -117,6 +117,7 @@ class KeyRotation:
                 'cloud': 'azure',
                 'status': 'success',
                 'rotated_at': datetime.now(datetime.UTC).isoformat(),
+                'subscription_id': subscription_id,
                 'app_id': app_id,
                 'expires_at': end_date.isoformat()
             }
