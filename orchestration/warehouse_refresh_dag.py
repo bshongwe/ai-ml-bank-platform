@@ -13,6 +13,7 @@ from warehouse.transforms.credit_risk_gold_transform import (
     transform_credit_risk_to_gold)
 from warehouse.transforms.churn_gold_transform import transform_churn_to_gold
 from warehouse.synapse_loader import SynapseLoader
+from warehouse.maintenance import WarehouseMaintenance
 import os
 
 default_args = {
@@ -88,6 +89,15 @@ def load_to_synapse(**context):
     )
 
 
+def vacuum_warehouse(**context):
+    """Run warehouse maintenance tasks."""
+    maint = WarehouseMaintenance(
+        synapse_server=os.getenv('SYNAPSE_SERVER'),
+        database=os.getenv('SYNAPSE_DB')
+    )
+    maint.vacuum_all_tables()
+
+
 fraud_transform = PythonOperator(
     task_id='transform_fraud_gold',
     python_callable=transform_fraud_gold,
@@ -112,4 +122,10 @@ synapse_load = PythonOperator(
     dag=dag,
 )
 
-[fraud_transform, credit_transform, churn_transform] >> synapse_load
+vacuum_task = PythonOperator(
+    task_id='vacuum_warehouse',
+    python_callable=vacuum_warehouse,
+    dag=dag,
+)
+
+[fraud_transform, credit_transform, churn_transform] >> synapse_load >> vacuum_task
