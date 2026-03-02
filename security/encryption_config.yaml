@@ -1,0 +1,49 @@
+# Field-Level Encryption Configuration
+# Defines which fields to encrypt in each lakehouse layer
+
+# Feature flags (enable/disable encryption per layer)
+encryption_enabled:
+  bronze: false  # Set to true to enable Bronze encryption
+  silver: false  # Set to true to enable Silver encryption
+  gold: false    # Set to true to enable Gold encryption
+
+# KMS key IDs per layer
+kms_keys:
+  bronze: "alias/bronze-encryption-key"
+  silver: "alias/silver-encryption-key"
+  gold: "alias/gold-encryption-key"
+
+# Fields to encrypt per layer
+bronze_pii_fields:
+  fraud:
+    - customer_id
+    - transaction_id
+    - payload.device_id
+  credit_risk:
+    - account_id
+    - customer_id
+  churn:
+    - customer_id
+
+silver_pii_fields:
+  fraud:
+    - customer_id
+    - transaction_id
+  credit_risk:
+    - account_id
+  churn:
+    - customer_id
+
+gold_pii_fields: []  # Gold layer should have no PII (aggregated only)
+
+# Strict mode (reject plaintext writes when enabled)
+strict_mode:
+  bronze: false
+  silver: false
+  gold: false
+
+# Migration settings
+migration:
+  batch_size: 1000  # Records to process per batch
+  parallel_workers: 4
+  checkpoint_interval: 10000  # Save progress every N records
