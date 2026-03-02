@@ -1,0 +1,81 @@
+# SLIs and SLOs for AI/ML Banking Platform
+
+streaming_ingestion:
+  sli:
+    - name: event_latency_p99
+      description: 99th percentile event processing latency
+      unit: milliseconds
+    - name: delivery_success_rate
+      description: Percentage of events successfully delivered
+      unit: percentage
+    - name: dlq_count
+      description: Count of events in dead letter queue
+      unit: count
+  slo:
+    event_latency_p99: 500  # ms
+    delivery_success_rate: 99.9  # %
+    dlq_count: 100  # max per hour
+
+bronze:
+  sli:
+    - name: data_freshness
+      description: Time since last data write
+      unit: minutes
+    - name: schema_drift_count
+      description: Number of schema violations detected
+      unit: count
+  slo:
+    data_freshness: 15  # minutes
+    schema_drift_count: 0  # zero tolerance
+
+silver:
+  sli:
+    - name: transformation_success_rate
+      description: Percentage of successful transformations
+      unit: percentage
+    - name: feature_validity_rate
+      description: Percentage of valid features
+      unit: percentage
+  slo:
+    transformation_success_rate: 99.5  # %
+    feature_validity_rate: 99.0  # %
+
+ml:
+  sli:
+    - name: inference_latency_p99
+      description: 99th percentile inference latency
+      unit: milliseconds
+    - name: model_accuracy
+      description: Model accuracy on validation set
+      unit: percentage
+    - name: drift_score
+      description: Feature/prediction drift score
+      unit: float
+  slo:
+    inference_latency_p99: 100  # ms (fraud detection)
+    model_accuracy: 90.0  # %
+    drift_score: 0.05  # max acceptable
+
+warehouse:
+  sli:
+    - name: etl_success_rate
+      description: Percentage of successful ETL jobs
+      unit: percentage
+    - name: table_freshness
+      description: Time since last table update
+      unit: minutes
+  slo:
+    etl_success_rate: 99.9  # %
+    table_freshness: 60  # minutes
+
+cost:
+  sli:
+    - name: daily_spend
+      description: Total cloud spend per day
+      unit: usd
+    - name: cost_per_prediction
+      description: Cost per ML prediction
+      unit: usd
+  slo:
+    daily_spend: 5000  # USD
+    cost_per_prediction: 0.001  # USD
