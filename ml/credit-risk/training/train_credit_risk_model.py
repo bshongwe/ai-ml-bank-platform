@@ -17,6 +17,7 @@ from datetime import datetime
 # Constants
 N_ESTIMATORS = 50
 MAX_DEPTH = 10
+MAX_FEATURES = 'sqrt'
 RANDOM_STATE = 42
 TRAIN_CUTOFF_DATE = '2026-01-01'
 
@@ -64,6 +65,7 @@ def train_model(X_train, y_train):
     model = RandomForestClassifier(
         n_estimators=N_ESTIMATORS,
         max_depth=MAX_DEPTH,
+        max_features=MAX_FEATURES,
         random_state=RANDOM_STATE,
         min_samples_leaf=50
     )
