@@ -1,0 +1,7 @@
+{
+  "date": "date",
+  "risk_band": "string",
+  "account_count": "int",
+  "avg_score": "float",
+  "total_exposure": "float"
+}
