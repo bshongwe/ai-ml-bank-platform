@@ -87,6 +87,15 @@ def save_model_artifacts(model, metrics, feature_schema, train):
         model_path / 'feature_schema.txt', 'w', encoding='utf-8'
     ) as f:
         f.write(feature_schema)
+    fingerprint = hashlib.sha256(
+        train.to_csv(index=False).encode()
+    ).hexdigest()
+    with open(
+        model_path / 'training_dataset_fingerprint.txt',
+        'w',
+        encoding='utf-8'
+    ) as f:
+        f.write(fingerprint)
 
 if __name__ == '__main__':
     data = load_and_merge_data()
