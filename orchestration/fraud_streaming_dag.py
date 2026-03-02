@@ -129,6 +129,15 @@ def compute_device_entropy(df):
 
 def feature_engineering_bronze_to_silver(file_path, silver_path):
 	"""Transform bronze data to silver features."""
+	if not file_path or not isinstance(file_path, str):
+		raise ValueError("file_path must be a non-empty string")
+	if not silver_path or not isinstance(silver_path, str):
+		raise ValueError("silver_path must be a non-empty string")
+
+	file_path_obj = Path(file_path).resolve()
+	if not file_path_obj.is_file():
+		raise ValueError(f"Invalid file_path: {file_path}")
+
 	df = pd.read_json(file_path, lines=True)
 	df = df.sort_values(['customer_id', 'event_time'])
 

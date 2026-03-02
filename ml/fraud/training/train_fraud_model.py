@@ -13,6 +13,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, precision_score
 from datetime import datetime
 
+from typing import NamedTuple
+
 # Constants
 N_ESTIMATORS = 100
 RANDOM_STATE = 42
@@ -49,14 +51,22 @@ def split_train_test(data):
     test = data[data['event_time'] >= TRAIN_CUTOFF_DATE]
     return train, test
 
+class FeatureSet(NamedTuple):
+    """Container for train/test features and labels."""
+    X_train: pd.DataFrame
+    y_train: pd.Series
+    X_test: pd.DataFrame
+    y_test: pd.Series
+
 def prepare_features(train, test):
     """Extract feature columns and labels."""
     feature_cols = ['tx_velocity_1m', 'geo_distance_km', 'device_entropy']
-    X_train = train[feature_cols]
-    y_train = train['is_fraud']
-    X_test = test[feature_cols]
-    y_test = test['is_fraud']
-    return X_train, y_train, X_test, y_test
+    return FeatureSet(
+        X_train=train[feature_cols],
+        y_train=train['is_fraud'],
+        X_test=test[feature_cols],
+        y_test=test['is_fraud']
+    )
 
 def compute_feature_schema_hash(X_train):
     """Compute hash of feature schema."""
@@ -109,13 +119,15 @@ def save_model_artifacts(model, metrics, feature_schema, train):
 if __name__ == '__main__':
     data = load_and_merge_data()
     train, test = split_train_test(data)
-    X_train, y_train, X_test, y_test = prepare_features(train, test)
+    features = prepare_features(train, test)
 
-    feature_schema = str(list(X_train.columns))
-    feature_schema_hash = compute_feature_schema_hash(X_train)
+    feature_schema = str(list(features.X_train.columns))
+    feature_schema_hash = compute_feature_schema_hash(features.X_train)
 
-    model = train_model(X_train, y_train)
-    auc, precision = evaluate_model(model, X_test, y_test)
+    model = train_model(features.X_train, features.y_train)
+    auc, precision = evaluate_model(
+        model, features.X_test, features.y_test
+    )
 
     metrics = {
         'auc': auc,
