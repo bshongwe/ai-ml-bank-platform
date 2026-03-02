@@ -28,18 +28,54 @@ class MetricsCollector:
             import boto3
             cloudwatch = boto3.client('cloudwatch')
             stream_name = os.getenv('KINESIS_STREAM', 'fraud-events')
-            # Query CloudWatch metrics
+            end_time = datetime.utcnow()
+            start_time = end_time - timedelta(minutes=5)
+            
+            # Query p99 latency
+            latency_response = cloudwatch.get_metric_statistics(
+                Namespace='AWS/Kinesis',
+                MetricName='GetRecords.Latency',
+                Dimensions=[{'Name': 'StreamName', 'Value': stream_name}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=300,
+                Statistics=['Maximum'],
+                Unit='Milliseconds'
+            )
+            
+            # Query success rate
+            success_response = cloudwatch.get_metric_statistics(
+                Namespace='AWS/Kinesis',
+                MetricName='GetRecords.Success',
+                Dimensions=[{'Name': 'StreamName', 'Value': stream_name}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=300,
+                Statistics=['Average']
+            )
+            
+            # Extract metrics
+            event_latency_p99 = (
+                latency_response['Datapoints'][0]['Maximum']
+                if latency_response['Datapoints'] else 0.0
+            )
+            delivery_success_rate = (
+                success_response['Datapoints'][0]['Average'] * 100
+                if success_response['Datapoints'] else 0.0
+            )
+            
             return {
-                'event_latency_p99': 85.0,
-                'delivery_success_rate': 99.8,
-                'dlq_count': 2,
+                'event_latency_p99': event_latency_p99,
+                'delivery_success_rate': delivery_success_rate,
+                'dlq_count': 0,
                 'timestamp': datetime.utcnow().isoformat()
             }
-        except Exception:
+        except Exception as e:
             return {
                 'event_latency_p99': 0.0,
                 'delivery_success_rate': 0.0,
                 'dlq_count': 0,
+                'error': str(e),
                 'timestamp': datetime.utcnow().isoformat()
             }
 
