@@ -14,19 +14,20 @@ import pandas as pd
 from jsonschema import validate, ValidationError
 import os
 import numpy as np
+from pathlib import Path
 
 # Dynamic path resolution using Airflow Variables
 BRONZE_PATH = Variable.get(
 	'churn_bronze_path',
-	default_var='/lake/bronze/churn_bronze.json'
+	default_var='lake/bronze/churn_bronze.json'
 )
 SILVER_PATH = Variable.get(
 	'churn_silver_path',
-	default_var='/lake/silver/churn_features.parquet'
+	default_var='lake/silver/churn_features.parquet'
 )
 SCHEMA_PATH = Variable.get(
 	'churn_bronze_schema_path',
-	default_var='/lake/bronze/churn_bronze_schema.json'
+	default_var='lake/bronze/churn_bronze_schema.json'
 )
 
 default_args = {
@@ -36,18 +37,28 @@ default_args = {
 }
 
 def load_schema(schema_path):
-	with open(schema_path, 'r') as f:
+	safe_path = Path(schema_path).resolve()
+	if not safe_path.is_file():
+		raise ValueError(f"Invalid schema path: {schema_path}")
+	with open(safe_path, 'r', encoding='utf-8') as f:
 		return json.load(f)
 
 def validate_bronze_file(file_path, schema):
-	df = pd.read_json(file_path, lines=True)
+	safe_path = Path(file_path).resolve()
+	if not safe_path.is_file():
+		raise ValueError(f"Invalid file path: {file_path}")
+	df = pd.read_json(safe_path, lines=True)
 	for idx, record in df.iterrows():
 		try:
 			validate(instance=record.to_dict(), schema=schema)
 		except ValidationError as e:
-			logging.error(f"Schema validation failed at row {idx}: {e}")
+			logging.error(
+				"Schema validation failed at row %s: %s", idx, e
+			)
 			raise
-	logging.info(f"All records in {file_path} passed schema validation.")
+	logging.info(
+		"All records in %s passed schema validation.", file_path
+	)
 
 def compute_churn_features(file_path, out_path):
 	"""
@@ -82,7 +93,7 @@ def compute_churn_features(file_path, out_path):
 	)
 
 	df.to_parquet(out_path, index=False)
-	logging.info(f"Churn features written to {out_path}")
+	logging.info("Churn features written to %s", out_path)
 
 def batch_churn_etl():
 	schema = load_schema(SCHEMA_PATH)
