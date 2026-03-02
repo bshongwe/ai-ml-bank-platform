@@ -6,3 +6,8 @@ pyarrow==17.0.0
 jsonschema==4.21.1
 numpy==1.26.4
 scipy==1.12.0
+fastapi==0.109.0
+uvicorn==0.27.0
+cryptography==42.0.0
+requests==2.31.0
+pydantic==2.5.0
