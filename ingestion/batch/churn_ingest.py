@@ -5,6 +5,7 @@ Production-grade: reads customer logs, validates, writes to Bronze.
 
 import os
 import json
+import logging
 import pandas as pd
 from jsonschema import validate, ValidationError
 from airflow.models import Variable
@@ -41,7 +42,9 @@ def validate_and_write_bronze():
 		try:
 			validate(instance=record.to_dict(), schema=schema)
 		except ValidationError as e:
-			print(f"Schema validation failed at row {idx}: {e}")
+			logging.error(
+				"Schema validation failed at row %s: %s", idx, e
+			)
 			raise
 	df.to_json(BRONZE_PATH, orient='records', lines=True)
-	print(f"Bronze data written to {BRONZE_PATH}")
+	logging.info("Bronze data written to %s", BRONZE_PATH)

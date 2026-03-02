@@ -18,6 +18,11 @@ import os
 import numpy as np
 from pathlib import Path
 
+# Constants
+REPAYMENT_HISTORY_WINDOW = 12
+BALANCE_VOLATILITY_DAYS = 90
+DELINQUENCY_WINDOW = 12
+
 # Dynamic path resolution using Airflow Variables
 BRONZE_PATH = Variable.get(
 	'credit_risk_bronze_path',
@@ -77,24 +82,30 @@ def compute_credit_risk_features(file_path, out_path):
 	df['repayment_history'] = df.groupby('account_id')[
 		'repayment_status'
 	].transform(
-		lambda x: x.rolling(window=12, min_periods=1)
-		.apply(lambda w: list(w), raw=False)
+		lambda x: x.rolling(
+			window=REPAYMENT_HISTORY_WINDOW, min_periods=1
+		).apply(lambda w: list(w), raw=False)
 	)
 
 	# Balance volatility (stddev over last 90 days)
 	df['balance_volatility'] = df.groupby('account_id')[
 		'balance'
 	].transform(
-		lambda x: x.rolling('90D', on=df['snapshot_date']).std()
+		lambda x: x.rolling(
+			f'{BALANCE_VOLATILITY_DAYS}D', on=df['snapshot_date']
+		).std()
 	)
 
 	# Delinquency trends (rolling mean of missed payments)
 	df['delinquency_trends'] = df.groupby('account_id')[
 		'repayment_status'
 	].transform(
-		lambda x: x.rolling(window=12, min_periods=1)
-		.apply(
-			lambda w: np.mean([1 if v == 'missed' else 0 for v in w]),
+		lambda x: x.rolling(
+			window=DELINQUENCY_WINDOW, min_periods=1
+		).apply(
+			lambda w: np.mean(
+				[1 if v == 'missed' else 0 for v in w]
+			),
 			raw=False
 		)
 	)

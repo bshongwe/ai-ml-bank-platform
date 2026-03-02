@@ -19,6 +19,8 @@ import numpy as np
 from jsonschema import validate, ValidationError
 from scipy.stats import entropy
 import os
+from pathlib import Path
+from tempfile import gettempdir
 
 BRONZE_BUCKET = 'lake/bronze/payments_raw'
 SILVER_PATH = 'lake/silver/fraud_features/'
@@ -28,6 +30,7 @@ SCHEMA_PATH = 'lake/bronze/fraud_bronze_schema.json'
 EARTH_RADIUS_KM = 6371
 SECONDS_PER_DAY = 86400
 ROLLING_WINDOW_SIZE = 5
+POKE_INTERVAL_SECONDS = 60
 
 default_args = {
 	'owner': 'fraud-ml-platform',
@@ -143,13 +146,18 @@ def feature_engineering_bronze_to_silver(file_path, silver_path):
 	logging.info("Silver features written to %s", out_path)
 
 def process_new_bronze_file(**context):
-	s3_key = context['task_instance'].xcom_pull(task_ids='wait_for_bronze_file')
-	local_path = f"/tmp/{os.path.basename(s3_key)}"
+	s3_key = context['task_instance'].xcom_pull(
+		task_ids='wait_for_bronze_file'
+	)
+	temp_dir = Path(gettempdir())
+	local_path = temp_dir / os.path.basename(s3_key)
 	s3 = S3Hook(aws_conn_id='aws_default')
-	s3.get_key(s3_key, bucket_name=BRONZE_BUCKET).download_file(local_path)
+	s3.get_key(s3_key, bucket_name=BRONZE_BUCKET).download_file(
+		str(local_path)
+	)
 	schema = load_schema(SCHEMA_PATH)
-	validate_bronze_file(local_path, schema)
-	feature_engineering_bronze_to_silver(local_path, SILVER_PATH)
+	validate_bronze_file(str(local_path), schema)
+	feature_engineering_bronze_to_silver(str(local_path), SILVER_PATH)
 
 with DAG(
 	dag_id='fraud_streaming_pipeline',
@@ -166,7 +174,7 @@ with DAG(
 		aws_conn_id='aws_default',
 		wildcard_match=True,
 		timeout=SECONDS_PER_DAY,
-		poke_interval=60,
+		poke_interval=POKE_INTERVAL_SECONDS,
 		mode='poke',
 	)
 

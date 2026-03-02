@@ -16,6 +16,10 @@ import os
 import numpy as np
 from pathlib import Path
 
+# Constants
+DECAY_RATE = 0.01
+COMPLAINT_WINDOW_DAYS = 30
+
 # Dynamic path resolution using Airflow Variables
 BRONZE_PATH = Variable.get(
 	'churn_bronze_path',
@@ -72,7 +76,7 @@ def compute_churn_features(file_path, out_path):
 	df = df.sort_values(['customer_id', 'event_time'])
 
 	# Transaction decay (exp decay of tx count over 90 days)
-	def exp_decay(events, decay_rate=0.01):
+	def exp_decay(events, decay_rate=DECAY_RATE):
 		return np.sum(np.exp(-decay_rate * np.arange(len(events))))
 	df['transaction_decay'] = df.groupby('customer_id')[
 		'event_time'
@@ -87,9 +91,14 @@ def compute_churn_features(file_path, out_path):
 	df['complaint_frequency'] = df.groupby('customer_id')[
 		'event_type'
 	].transform(
-		lambda x: x.rolling(window=30, min_periods=1)
-		.apply(lambda w: np.mean([1 if v == 'complaint' else 0 for v in w]),
-			   raw=False)
+		lambda x: x.rolling(
+			window=COMPLAINT_WINDOW_DAYS, min_periods=1
+		).apply(
+			lambda w: np.mean(
+				[1 if v == 'complaint' else 0 for v in w]
+			),
+			raw=False
+		)
 	)
 
 	df.to_parquet(out_path, index=False)
