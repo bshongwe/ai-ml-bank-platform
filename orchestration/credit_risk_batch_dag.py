@@ -16,12 +16,19 @@ import pandas as pd
 from jsonschema import validate, ValidationError
 import os
 import numpy as np
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
+from security.encryption_migration import EncryptionMigration
 
 # Constants
 REPAYMENT_HISTORY_WINDOW = 12
 BALANCE_VOLATILITY_DAYS = 90
 DELINQUENCY_WINDOW = 12
+
+# Encryption support
+encryption_migration = EncryptionMigration()
 
 # Dynamic path resolution using Airflow Variables
 BRONZE_PATH = Variable.get(
@@ -69,12 +76,16 @@ def validate_bronze_file(file_path, schema):
 
 def compute_credit_risk_features(file_path, out_path):
 	"""
-	Compute risk features:
+	Compute risk features with encryption support:
 	- repayment_history: last 12 repayment statuses
 	- balance_volatility: stddev of balance over last 90 days
 	- delinquency_trends: rolling mean of missed payments
 	"""
 	df = pd.read_json(file_path, lines=True)
+	
+	# Decrypt PII fields if encrypted (auto-detects)
+	df = encryption_migration.decrypt_dataframe(df, 'bronze', 'credit_risk')
+	
 	df['snapshot_date'] = pd.to_datetime(df['snapshot_date'])
 	df = df.sort_values(['account_id', 'snapshot_date'])
 
@@ -109,6 +120,9 @@ def compute_credit_risk_features(file_path, out_path):
 			raw=False
 		)
 	)
+	
+	# Encrypt PII fields for Silver layer (if enabled in config)
+	df = encryption_migration.encrypt_dataframe(df, 'silver', 'credit_risk')
 
 	df.to_parquet(out_path, index=False)
 	logging.info("Credit risk features written to %s", out_path)

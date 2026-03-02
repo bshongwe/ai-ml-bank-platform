@@ -19,8 +19,12 @@ import numpy as np
 from jsonschema import validate, ValidationError
 from scipy.stats import entropy
 import os
+import sys
 from pathlib import Path
 from tempfile import gettempdir
+
+sys.path.append(str(Path(__file__).parent.parent))
+from security.encryption_migration import EncryptionMigration
 
 BRONZE_BUCKET = 'lake/bronze/payments_raw'
 SILVER_PATH = 'lake/silver/fraud_features/'
@@ -31,6 +35,9 @@ EARTH_RADIUS_KM = 6371
 SECONDS_PER_DAY = 86400
 ROLLING_WINDOW_SIZE = 5
 POKE_INTERVAL_SECONDS = 60
+
+# Encryption support
+encryption_migration = EncryptionMigration()
 
 default_args = {
 	'owner': 'fraud-ml-platform',
@@ -128,7 +135,7 @@ def compute_device_entropy(df):
 	return df
 
 def feature_engineering_bronze_to_silver(file_path, silver_path):
-	"""Transform bronze data to silver features."""
+	"""Transform bronze data to silver features with encryption support."""
 	if not file_path or not isinstance(file_path, str):
 		raise ValueError("file_path must be a non-empty string")
 	if not silver_path or not isinstance(silver_path, str):
@@ -139,11 +146,18 @@ def feature_engineering_bronze_to_silver(file_path, silver_path):
 		raise ValueError(f"Invalid file_path: {file_path}")
 
 	df = pd.read_json(file_path, lines=True)
+	
+	# Decrypt PII fields if encrypted (auto-detects)
+	df = encryption_migration.decrypt_dataframe(df, 'bronze', 'fraud')
+	
 	df = df.sort_values(['customer_id', 'event_time'])
 
 	df = compute_tx_velocity(df)
 	df = compute_geo_distance(df)
 	df = compute_device_entropy(df)
+	
+	# Encrypt PII fields for Silver layer (if enabled in config)
+	df = encryption_migration.encrypt_dataframe(df, 'silver', 'fraud')
 
 	# Save to Silver
 	safe_silver_path = Path(silver_path).resolve()

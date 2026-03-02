@@ -14,11 +14,18 @@ import pandas as pd
 from jsonschema import validate, ValidationError
 import os
 import numpy as np
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
+from security.encryption_migration import EncryptionMigration
 
 # Constants
 DECAY_RATE = 0.01
 COMPLAINT_WINDOW_DAYS = 30
+
+# Encryption support
+encryption_migration = EncryptionMigration()
 
 # Dynamic path resolution using Airflow Variables
 BRONZE_PATH = Variable.get(
@@ -66,12 +73,16 @@ def validate_bronze_file(file_path, schema):
 
 def compute_churn_features(file_path, out_path):
 	"""
-	Compute churn features:
+	Compute churn features with encryption support:
 	- transaction_decay: exp decay of tx count over 90 days
 	- login_inactivity: days since last login
 	- complaint_frequency: rolling mean of complaints per 30 days
 	"""
 	df = pd.read_json(file_path, lines=True)
+	
+	# Decrypt PII fields if encrypted (auto-detects)
+	df = encryption_migration.decrypt_dataframe(df, 'bronze', 'churn')
+	
 	df['event_time'] = pd.to_datetime(df['event_time'])
 	df = df.sort_values(['customer_id', 'event_time'])
 
@@ -100,6 +111,9 @@ def compute_churn_features(file_path, out_path):
 			raw=False
 		)
 	)
+	
+	# Encrypt PII fields for Silver layer (if enabled in config)
+	df = encryption_migration.encrypt_dataframe(df, 'silver', 'churn')
 
 	df.to_parquet(out_path, index=False)
 	logging.info("Churn features written to %s", out_path)
