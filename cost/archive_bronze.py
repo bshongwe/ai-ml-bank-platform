@@ -44,12 +44,26 @@ class BronzeArchiver:
             print("Dry run mode - not archiving")
             return len(old_files)
         
-        # TODO: Move to S3 Glacier or equivalent
-        # for file_path in old_files:
-        #     archive_to_glacier(file_path)
-        #     file_path.unlink()
+        try:
+            import boto3
+            s3 = boto3.client('s3')
+            bucket = os.getenv('BRONZE_BUCKET', 'ml-platform-bronze')
+            
+            for file_path in old_files:
+                key = str(file_path.relative_to(self.bronze_path))
+                s3.upload_file(
+                    str(file_path),
+                    bucket,
+                    key,
+                    ExtraArgs={'StorageClass': 'GLACIER'}
+                )
+                file_path.unlink()
+            
+            print(f"Archived {len(old_files)} files to Glacier")
+        except Exception as e:
+            print(f"Archive error: {e}")
+            return 0
         
-        print(f"Archived {len(old_files)} files")
         return len(old_files)
 
 if __name__ == '__main__':

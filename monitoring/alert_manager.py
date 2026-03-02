@@ -115,9 +115,18 @@ class AlertManager:
         
         print(f"ALERT: {json.dumps(alert_payload, indent=2)}")
         
-        # TODO: Send to PagerDuty/Teams webhook
-        # if ALERT_WEBHOOK:
-        #     requests.post(ALERT_WEBHOOK, json=alert_payload)
+        if ALERT_WEBHOOK:
+            try:
+                import requests
+                response = requests.post(
+                    ALERT_WEBHOOK,
+                    json=alert_payload,
+                    timeout=10
+                )
+                response.raise_for_status()
+                print(f"Alert sent to webhook: {response.status_code}")
+            except Exception as e:
+                print(f"Failed to send alert: {e}")
 
     def process_alerts(self, metrics: Dict[str, Dict[str, Any]]) -> None:
         """Check breaches and send alerts."""
