@@ -165,13 +165,13 @@ def main():
             dry_run=args.dry_run
         )
         
-        print(f"\n{'='*60}")
-        print(f"Migration Summary:")
+        print("\n" + "="*60)
+        print("Migration Summary:")
         print(f"  Total files: {results['total_files']}")
         print(f"  Processed: {results['processed']}")
         print(f"  Failed: {results['failed']}")
         print(f"  Duration: {results['start_time']} → {results['end_time']}")
-        print(f"{'='*60}\n")
+        print("="*60 + "\n")
 
 
 if __name__ == '__main__':
