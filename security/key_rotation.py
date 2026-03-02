@@ -84,18 +84,41 @@ class KeyRotation:
         print("Rotating Azure keys...")
         try:
             from azure.identity import DefaultAzureCredential
-            from azure.mgmt.authorization import AuthorizationManagementClient
+            from azure.mgmt.graphrbac import GraphRbacManagementClient
+            from azure.graphrbac.models import PasswordCredential
             credential = DefaultAzureCredential()
             subscription_id = os.getenv('AZURE_SUBSCRIPTION_ID')
-            client = AuthorizationManagementClient(
-                credential, subscription_id
-            )
+            tenant_id = os.getenv('AZURE_TENANT_ID')
             app_id = os.getenv('AZURE_APP_ID')
-            # Create new credential
+            
+            # Create Graph RBAC client for app credential management
+            graph_client = GraphRbacManagementClient(
+                credential, tenant_id
+            )
+            
+            # Create new password credential
+            end_date = datetime.now(datetime.UTC) + timedelta(
+                days=ROTATION_INTERVAL_DAYS
+            )
+            new_password = PasswordCredential(
+                start_date=datetime.now(datetime.UTC),
+                end_date=end_date,
+                key_id=None,
+                value=None
+            )
+            
+            # Add new password to service principal
+            graph_client.applications.update_password_credentials(
+                application_object_id=app_id,
+                value=[new_password]
+            )
+            
             return {
                 'cloud': 'azure',
                 'status': 'success',
-                'rotated_at': datetime.now(datetime.UTC).isoformat()
+                'rotated_at': datetime.now(datetime.UTC).isoformat(),
+                'app_id': app_id,
+                'expires_at': end_date.isoformat()
             }
         except Exception as e:
             return {
