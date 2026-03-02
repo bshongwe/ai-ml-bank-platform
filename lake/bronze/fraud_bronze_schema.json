@@ -1,0 +1,7 @@
+{
+  "event_id": "uuid",
+  "event_type": "payment_authorised",
+  "event_time": "ISO-8601",
+  "source_system": "cards",
+  "payload": { "opaque": true }
+}

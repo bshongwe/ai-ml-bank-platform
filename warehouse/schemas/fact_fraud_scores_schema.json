@@ -1,0 +1,8 @@
+{
+  "transaction_id": "string",
+  "customer_id": "string",
+  "fraud_score": "float",
+  "confidence": "float",
+  "model_version": "string",
+  "event_time": "timestamp"
+}

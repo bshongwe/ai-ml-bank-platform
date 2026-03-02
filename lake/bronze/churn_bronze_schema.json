@@ -1,0 +1,6 @@
+{
+  "customer_id": "string",
+  "event_time": "timestamp",
+  "event_type": "string",
+  "details": { "opaque": true }
+}

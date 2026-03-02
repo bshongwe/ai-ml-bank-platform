@@ -1,0 +1,6 @@
+{
+  "customer_id": "string",
+  "transaction_decay": "float",
+  "login_inactivity": "float",
+  "complaint_frequency": "float"
+}

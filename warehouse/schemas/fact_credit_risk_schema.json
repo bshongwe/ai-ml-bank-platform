@@ -1,0 +1,7 @@
+{
+  "account_id": "string",
+  "risk_band": "string",
+  "score": "float",
+  "model_version": "string",
+  "event_time": "timestamp"
+}
