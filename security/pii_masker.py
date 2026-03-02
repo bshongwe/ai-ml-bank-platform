@@ -69,7 +69,7 @@ class PIIMasker:
         for col in text_cols:
             for pii_type, pattern in PII_PATTERNS.items():
                 masked_df[col] = masked_df[col].apply(
-                    lambda x: self.mask_pattern(x, pattern)
+                    lambda x, p=pattern: self.mask_pattern(x, p)
                 )
         
         return masked_df
