@@ -1,0 +1,8 @@
+{
+  "hour_bucket": "timestamp",
+  "fraud_rate": "float",
+  "total_transactions": "int",
+  "flagged_transactions": "int",
+  "avg_fraud_score": "float",
+  "high_risk_count": "int"
+}
