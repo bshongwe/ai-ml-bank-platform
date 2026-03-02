@@ -49,11 +49,23 @@ class BronzeReplay:
             print("Dry run mode - not sending to stream")
             return len(events)
         
-        # TODO: Send events to stream endpoint
-        # for event in events:
-        #     requests.post(STREAM_ENDPOINT, json=event)
+        if STREAM_ENDPOINT:
+            try:
+                import requests
+                for event in events:
+                    response = requests.post(
+                        STREAM_ENDPOINT,
+                        json=event,
+                        timeout=5
+                    )
+                    response.raise_for_status()
+                print(f"Replayed {len(events)} events")
+            except Exception as e:
+                print(f"Replay error: {e}")
+                return 0
+        else:
+            print("No STREAM_ENDPOINT configured")
         
-        print(f"Replayed {len(events)} events")
         return len(events)
 
 if __name__ == '__main__':
