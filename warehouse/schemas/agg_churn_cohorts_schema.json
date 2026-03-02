@@ -1,0 +1,7 @@
+{
+  "week": "date",
+  "risk_segment": "string",
+  "customer_count": "int",
+  "avg_churn_probability": "float",
+  "high_confidence_count": "int"
+}
