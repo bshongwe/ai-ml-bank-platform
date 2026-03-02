@@ -5,7 +5,7 @@ Collects SLI metrics from all platform layers.
 import os
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, List
 import pandas as pd
@@ -28,7 +28,7 @@ class MetricsCollector:
             import boto3
             cloudwatch = boto3.client('cloudwatch')
             stream_name = os.getenv('KINESIS_STREAM', 'fraud-events')
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
             start_time = end_time - timedelta(minutes=5)
             
             # Query p99 latency
@@ -68,7 +68,7 @@ class MetricsCollector:
                 'event_latency_p99': event_latency_p99,
                 'delivery_success_rate': delivery_success_rate,
                 'dlq_count': 0,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             return {
@@ -76,7 +76,7 @@ class MetricsCollector:
                 'delivery_success_rate': 0.0,
                 'dlq_count': 0,
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
     def collect_bronze_metrics(self) -> Dict[str, Any]:
@@ -86,7 +86,7 @@ class MetricsCollector:
             return {
                 'data_freshness': float('inf'),
                 'schema_drift_count': 0,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         
         files = list(bronze_path.rglob('*.json'))
@@ -109,7 +109,7 @@ class MetricsCollector:
         return {
             'data_freshness': data_freshness,
             'schema_drift_count': schema_drift_count,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     def collect_silver_metrics(self) -> Dict[str, Any]:
@@ -119,7 +119,7 @@ class MetricsCollector:
             return {
                 'transformation_success_rate': 0.0,
                 'feature_validity_rate': 0.0,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         
         parquet_files = list(silver_path.rglob('*.parquet'))
@@ -133,7 +133,7 @@ class MetricsCollector:
         return {
             'transformation_success_rate': transformation_success_rate,
             'feature_validity_rate': feature_validity_rate,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     def collect_ml_metrics(self) -> Dict[str, Any]:
@@ -159,7 +159,7 @@ class MetricsCollector:
             'inference_latency_p99': inference_latency_p99,
             'model_accuracy': model_accuracy,
             'drift_score': drift_score,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     def collect_warehouse_metrics(self) -> Dict[str, Any]:
@@ -169,7 +169,7 @@ class MetricsCollector:
             return {
                 'etl_success_rate': 0.0,
                 'table_freshness': float('inf'),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         
         parquet_files = list(warehouse_path.rglob('*.parquet'))
@@ -186,7 +186,7 @@ class MetricsCollector:
         return {
             'etl_success_rate': etl_success_rate,
             'table_freshness': table_freshness,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     def collect_cost_metrics(self) -> Dict[str, Any]:
@@ -204,7 +204,7 @@ class MetricsCollector:
         return {
             'daily_spend': daily_spend,
             'cost_per_prediction': cost_per_prediction,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
     def collect_all(self) -> Dict[str, Dict[str, Any]]:
@@ -219,7 +219,7 @@ class MetricsCollector:
         }
         
         # Save to file
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         output_file = self.metrics_path / f'metrics_{timestamp}.json'
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(metrics, f, indent=2)
