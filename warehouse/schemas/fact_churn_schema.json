@@ -1,0 +1,7 @@
+{
+  "customer_id": "string",
+  "churn_probability": "float",
+  "confidence": "float",
+  "model_version": "string",
+  "event_time": "timestamp"
+}
