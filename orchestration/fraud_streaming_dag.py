@@ -41,13 +41,59 @@ def validate_bronze_file(file_path, schema):
 	logging.info(f"All records in {file_path} passed schema validation.")
 
 def feature_engineering_bronze_to_silver(file_path, silver_path):
+	import numpy as np
+	from scipy.stats import entropy
+	from math import radians, cos, sin, asin, sqrt
+
 	df = pd.read_json(file_path, lines=True)
-	# Example feature engineering (replace with real logic)
-	df['tx_velocity_1m'] = 1.0  # TODO: implement real calculation
-	df['geo_distance_km'] = 0.0 # TODO: implement real calculation
-	df['device_entropy'] = 0.0  # TODO: implement real calculation
+	df = df.sort_values(['customer_id', 'event_time'])
+
+	# --- tx_velocity_1m: count of transactions per customer in the last 1 minute ---
+	df['event_time'] = pd.to_datetime(df['event_time'])
+	df['tx_velocity_1m'] = (
+		df.groupby('customer_id')['event_time']
+		.transform(lambda x: x.rolling('1min', on=x).count())
+	)
+
+	# --- geo_distance_km: haversine distance between consecutive transactions ---
+	def haversine(lat1, lon1, lat2, lon2):
+		# convert decimal degrees to radians
+		lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+		dlon = lon2 - lon1
+		dlat = lat2 - lat1
+		a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+		c = 2 * asin(sqrt(a))
+		r = 6371  # Radius of earth in kilometers
+		return c * r
+
+	# Assume columns 'latitude' and 'longitude' exist in payload
+	def extract_lat_lon(payload):
+		try:
+			return payload.get('latitude', np.nan), payload.get('longitude', np.nan)
+		except Exception:
+			return np.nan, np.nan
+	df[['latitude', 'longitude']] = df['payload'].apply(lambda p: pd.Series(extract_lat_lon(p)))
+	df[['prev_latitude', 'prev_longitude']] = (
+		df.groupby('customer_id')[['latitude', 'longitude']].shift(1)
+	)
+	df['geo_distance_km'] = df.apply(
+		lambda row: haversine(row['prev_latitude'], row['prev_longitude'], row['latitude'], row['longitude'])
+		if not pd.isnull(row['prev_latitude']) and not pd.isnull(row['latitude']) else 0.0,
+		axis=1
+	)
+
+	# --- device_entropy: entropy of device IDs in a rolling 5-min window ---
+	def rolling_entropy(series):
+		value_counts = series.value_counts(normalize=True)
+		return entropy(value_counts, base=2)
+	df['device_entropy'] = (
+		df.groupby('customer_id')['payload']
+		.transform(lambda x: x.rolling(window=5, min_periods=1).apply(
+			lambda w: rolling_entropy(pd.Series([p.get('device_id', '') for p in w])), raw=False))
+	)
+
 	# Save to Silver
-	out_path = os.path.join(silver_path, os.path.basename(file_path))
+	out_path = os.path.join(silver_path, os.path.basename(file_path).replace('.json', '.parquet'))
 	df.to_parquet(out_path, index=False)
 	logging.info(f"Silver features written to {out_path}")
 
