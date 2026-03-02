@@ -39,6 +39,21 @@ class AuditLogger:
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(event) + '\n')
 
+    def _matches_filters(
+        self, event: Dict, action: str, resource: str, user: str,
+        start_date: str
+    ) -> bool:
+        """Check if event matches all filters."""
+        if action and event.get('action') != action:
+            return False
+        if resource and event.get('resource') != resource:
+            return False
+        if user and event.get('user') != user:
+            return False
+        if start_date and event.get('timestamp') < start_date:
+            return False
+        return True
+
     def query_logs(
         self,
         action: str = None,
@@ -48,26 +63,16 @@ class AuditLogger:
     ) -> List[Dict]:
         """Query audit logs."""
         results = []
-        
-        # Search through log files
         log_files = sorted(self.log_path.glob('audit_*.jsonl'))
         
         for log_file in log_files:
             with open(log_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     event = json.loads(line)
-                    
-                    # Apply filters
-                    if action and event.get('action') != action:
-                        continue
-                    if resource and event.get('resource') != resource:
-                        continue
-                    if user and event.get('user') != user:
-                        continue
-                    if start_date and event.get('timestamp') < start_date:
-                        continue
-                    
-                    results.append(event)
+                    if self._matches_filters(
+                        event, action, resource, user, start_date
+                    ):
+                        results.append(event)
         
         return results
 
