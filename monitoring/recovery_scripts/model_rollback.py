@@ -27,7 +27,7 @@ class ModelRollback:
         link_path = self.registry_path / f"{model_name}_latest"
         if link_path.exists() and link_path.is_symlink():
             return link_path.readlink().name
-        return None
+        return ""
 
     def rollback(
         self, model_name: str, target_version: str = None
