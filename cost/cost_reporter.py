@@ -46,25 +46,46 @@ class CostReporter:
     def get_gcp_costs(self, start_date: str, end_date: str) -> Dict:
         """Get GCP costs for period."""
         try:
+            from google.cloud import bigquery
             from google.cloud import billing_v1
-            from google.cloud.billing_v1 import types
             client = billing_v1.CloudBillingClient()
             project_id = os.getenv('GCP_PROJECT_ID', 'ml-platform')
             billing_account = os.getenv(
                 'GCP_BILLING_ACCOUNT', 'billingAccounts/000000-000000-000000'
             )
             
+            # Verify billing account is active
+            account_name = f'billingAccounts/{billing_account.split("/")[-1]}'
+            billing_info = client.get_billing_account(name=account_name)
+            
             # Query billing data using BigQuery export
-            # Note: Requires BigQuery billing export to be configured
-            costs = {
-                'compute_engine': 234.80,
-                'cloud_storage': 67.40,
-                'vertex_ai': 156.20,
-                'total': 458.40,
-                'project_id': project_id,
-                'billing_account': billing_account,
-                'period': f'{start_date} to {end_date}'
-            }
+            bq_client = bigquery.Client(project=project_id)
+            table_id = billing_account.split('/')[-1].replace('-', '_')
+            query = f"""
+                SELECT 
+                    service.description as service,
+                    SUM(cost) as total_cost
+                FROM `{project_id}.billing_export.gcp_billing_export_v1_{table_id}`
+                WHERE DATE(_PARTITIONTIME) 
+                    BETWEEN '{start_date[:10]}' AND '{end_date[:10]}'
+                GROUP BY service.description
+            """
+            
+            query_job = bq_client.query(query)
+            results = query_job.result()
+            
+            costs = {}
+            total = 0.0
+            for row in results:
+                service_name = row['service'].lower().replace(' ', '_')
+                costs[service_name] = float(row['total_cost'])
+                total += float(row['total_cost'])
+            
+            costs['total'] = total
+            costs['project_id'] = project_id
+            costs['billing_account'] = billing_account
+            costs['period'] = f'{start_date} to {end_date}'
+            costs['billing_active'] = billing_info.open
             return costs
         except Exception as e:
             return {
@@ -81,27 +102,50 @@ class CostReporter:
             from azure.identity import DefaultAzureCredential
             from azure.mgmt.costmanagement import CostManagementClient
             from azure.mgmt.costmanagement.models import (
-                QueryDefinition, TimeframeType
+                QueryDefinition, QueryTimePeriod, QueryDataset,
+                QueryAggregation, QueryGrouping
             )
             credential = DefaultAzureCredential()
             subscription_id = os.getenv('AZURE_SUBSCRIPTION_ID')
             client = CostManagementClient(credential)
             
             scope = f'/subscriptions/{subscription_id}'
-            query = QueryDefinition(
-                type='Usage',
-                timeframe=TimeframeType.CUSTOM,
-                time_period={'from': start_date[:10], 'to': end_date[:10]}
+            
+            # Build query definition
+            query_dataset = QueryDataset(
+                granularity='Daily',
+                aggregation={
+                    'totalCost': QueryAggregation(name='Cost', function='Sum')
+                },
+                grouping=[
+                    QueryGrouping(type='Dimension', name='ServiceName')
+                ]
             )
             
-            # Query cost data
-            costs = {
-                'synapse': 345.60,
-                'blob_storage': 78.90,
-                'total': 424.50,
-                'subscription_id': subscription_id,
-                'period': f'{start_date} to {end_date}'
-            }
+            query = QueryDefinition(
+                type='Usage',
+                timeframe='Custom',
+                time_period=QueryTimePeriod(
+                    from_property=start_date[:10],
+                    to=end_date[:10]
+                ),
+                dataset=query_dataset
+            )
+            
+            # Execute query
+            result = client.query.usage(scope, query)
+            
+            costs = {}
+            total = 0.0
+            for row in result.rows:
+                service = row[1].lower().replace(' ', '_')
+                cost = float(row[0])
+                costs[service] = cost
+                total += cost
+            
+            costs['total'] = total
+            costs['subscription_id'] = subscription_id
+            costs['period'] = f'{start_date} to {end_date}'
             return costs
         except Exception as e:
             return {
