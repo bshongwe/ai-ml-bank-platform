@@ -49,6 +49,8 @@ def aggregate_fraud_metrics(df: pd.DataFrame) -> pd.DataFrame:
     ).reset_index()
 
     agg['fraud_rate'] = agg['flagged_transactions'] / agg['total_transactions']
+    agg['created_at'] = datetime.now(timezone.utc)
+    agg['updated_at'] = datetime.now(timezone.utc)
     return agg
 
 
@@ -69,8 +71,9 @@ def transform_fraud_to_gold(silver_path: Path, gold_path: Path,
     
     if incremental and gold_path.exists():
         existing = pd.read_parquet(gold_path)
-        gold_df = pd.concat([existing, gold_df]).drop_duplicates(
-            subset=['hour_bucket'], keep='last')
+        gold_df = pd.concat([existing, gold_df])
+        gold_df = gold_df.sort_values('updated_at', ascending=False)
+        gold_df = gold_df.drop_duplicates(subset=['hour_bucket'], keep='first')
     
     gold_df.to_parquet(gold_path, index=False)
     print(f"Gold fraud: {len(gold_df)} records, DQ: {dq_metrics}")

@@ -39,6 +39,8 @@ def aggregate_risk_distribution(df: pd.DataFrame) -> pd.DataFrame:
         total_exposure=('score', 'sum')
     ).reset_index()
 
+    agg['created_at'] = datetime.now(timezone.utc)
+    agg['updated_at'] = datetime.now(timezone.utc)
     return agg
 
 
@@ -59,8 +61,10 @@ def transform_credit_risk_to_gold(silver_path: Path, gold_path: Path,
     
     if incremental and gold_path.exists():
         existing = pd.read_parquet(gold_path)
-        gold_df = pd.concat([existing, gold_df]).drop_duplicates(
-            subset=['date', 'risk_band'], keep='last')
+        gold_df = pd.concat([existing, gold_df])
+        gold_df = gold_df.sort_values('updated_at', ascending=False)
+        gold_df = gold_df.drop_duplicates(
+            subset=['date', 'risk_band'], keep='first')
     
     gold_df.to_parquet(gold_path, index=False)
     print(f"Gold risk: {len(gold_df)} records, DQ: {dq_metrics}")
