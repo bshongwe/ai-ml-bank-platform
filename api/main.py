@@ -15,7 +15,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from api.crypto import SecurePayloadHandler, get_client_key
 from api.auth import APIKeyValidator
 from api.validation import (
-    ReplayProtection, DistributedRateLimiter, FraudScoreRequest
+    CombinedValidation, FraudScoreRequest
 )
 from ml.fraud.inference.fraud_scorer import FraudScorer
 from security.audit_logger import AuditLogger
@@ -23,8 +23,7 @@ from security.audit_logger import AuditLogger
 app = FastAPI(title="Banking ML API", version="1.0.0")
 
 validator = APIKeyValidator()
-rate_limiter = DistributedRateLimiter(requests_per_minute=100)
-replay_protection = ReplayProtection()
+combined_validator = CombinedValidation(requests_per_minute=100)
 audit_logger = AuditLogger()
 fraud_scorer = FraudScorer()
 
@@ -61,12 +60,6 @@ async def auth_middleware(request: Request, call_next):
             content={"error": "Invalid API key"}
         )
     
-    if not rate_limiter.allow(client_id):
-        return JSONResponse(
-            status_code=429,
-            content={"error": "Rate limit exceeded"}
-        )
-    
     request.state.client_id = client_id
     return await call_next(request)
 
@@ -82,13 +75,12 @@ async def score_fraud(request: Request, body: EncryptedRequest):
         
         payload, nonce, timestamp = handler.decrypt(body.encrypted_payload)
         
-        # Replay attack prevention
-        if not replay_protection.validate_request(client_id, nonce, timestamp):
+        if not combined_validator.validate_request(client_id, nonce, timestamp):
             audit_logger.log_event(
-                "replay_attack_detected",
+                "replay_or_rate_limit",
                 {"client_id": client_id, "nonce": nonce}
             )
-            raise HTTPException(status_code=403, detail="Replay attack detected")
+            raise HTTPException(status_code=403, detail="Request rejected")
         
         # Input validation
         try:
