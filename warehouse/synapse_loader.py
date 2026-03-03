@@ -59,7 +59,7 @@ class SynapseLoader:
 
     def load_table(self, parquet_path: Path, table_name: str,
                    container: str, load_type: str = 'incremental') -> None:
-        """Load parquet into Synapse table."""
+        """Load parquet into Synapse table with optimized COPY."""
         start_time = datetime.now(timezone.utc)
         blob_url = self._upload_to_blob(parquet_path, container)
 
@@ -74,7 +74,10 @@ class SynapseLoader:
         FROM '{blob_url}'
         WITH (
             FILE_TYPE = 'PARQUET',
-            CREDENTIAL = (IDENTITY = 'Managed Identity')
+            CREDENTIAL = (IDENTITY = 'Managed Identity'),
+            MAXERRORS = 100,
+            COMPRESSION = 'SNAPPY',
+            PARALLEL = 8
         )
         """
         cursor.execute(copy_sql)
