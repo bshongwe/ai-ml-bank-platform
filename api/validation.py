@@ -2,7 +2,7 @@
 Request validation for replay attack prevention and input sanitization.
 """
 from datetime import datetime, timezone
-from typing import Dict, Any, Set
+from typing import Dict, Any, Optional
 import boto3
 from pydantic import BaseModel, Field, validator
 
@@ -21,10 +21,69 @@ class FraudScoreRequest(BaseModel):
         return v
 
 
+class CombinedValidation:
+    """Combined replay protection and rate limiting in single DynamoDB call."""
+    
+    WINDOW_SECONDS = 300
+    
+    def __init__(self, requests_per_minute: int = 100):
+        self.rpm = requests_per_minute
+        self.dynamodb = boto3.resource('dynamodb')
+        self.table = self.dynamodb.Table('api_validation')
+    
+    def validate_request(self, client_id: str, nonce: str,
+                        timestamp: int) -> bool:
+        """Validate replay and rate limit in single transaction."""
+        now = int(datetime.now(timezone.utc).timestamp())
+        
+        if abs(now - timestamp) > self.WINDOW_SECONDS:
+            return False
+        
+        minute_bucket = now // 60
+        
+        try:
+            self.table.transact_write_items(
+                TransactItems=[
+                    {
+                        'Put': {
+                            'TableName': 'api_validation',
+                            'Item': {
+                                'pk': f'nonce#{client_id}',
+                                'sk': nonce,
+                                'ttl': now + self.WINDOW_SECONDS
+                            },
+                            'ConditionExpression': 'attribute_not_exists(sk)'
+                        }
+                    },
+                    {
+                        'Update': {
+                            'TableName': 'api_validation',
+                            'Key': {
+                                'pk': f'rate#{client_id}',
+                                'sk': str(minute_bucket)
+                            },
+                            'UpdateExpression': 'ADD request_count :inc SET #ttl = :ttl',
+                            'ExpressionAttributeNames': {'#ttl': 'ttl'},
+                            'ExpressionAttributeValues': {
+                                ':inc': 1,
+                                ':ttl': now + 120,
+                                ':limit': self.rpm
+                            },
+                            'ConditionExpression': 'attribute_not_exists(request_count) OR request_count < :limit'
+                        }
+                    }
+                ]
+            )
+            return True
+        except Exception:
+            return False
+
+
+# Legacy classes for backward compatibility
 class ReplayProtection:
     """Prevent replay attacks using nonce tracking and timestamp validation."""
     
-    WINDOW_SECONDS = 300  # 5 minutes
+    WINDOW_SECONDS = 300
     
     def __init__(self):
         self.dynamodb = boto3.resource('dynamodb')
@@ -35,11 +94,9 @@ class ReplayProtection:
         """Validate request is not replayed."""
         now = int(datetime.now(timezone.utc).timestamp())
         
-        # Check timestamp within window
         if abs(now - timestamp) > self.WINDOW_SECONDS:
             return False
         
-        # Check nonce not used
         try:
             self.nonce_table.put_item(
                 Item={
@@ -69,7 +126,7 @@ class DistributedRateLimiter:
         minute_bucket = now // 60
         
         try:
-            response = self.rate_table.update_item(
+            self.rate_table.update_item(
                 Key={'client_id': client_id, 'minute': minute_bucket},
                 UpdateExpression='ADD request_count :inc SET #ttl = :ttl',
                 ExpressionAttributeNames={'#ttl': 'ttl'},
