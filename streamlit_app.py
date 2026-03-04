@@ -60,8 +60,8 @@ if page == "🏠 Overview":
         if st.button("🔄 Refresh Warehouse", use_container_width=True):
             with st.spinner("Running warehouse refresh..."):
                 try:
-                    from orchestration.warehouse_refresh_dag import warehouse_refresh_dag
-                    warehouse_refresh_dag()
+                    from orchestration.warehouse_refresh_dag import refresh_warehouse
+                    refresh_warehouse()
                     st.success("✓ Warehouse refresh completed")
                 except Exception as e:
                     st.error(f"✗ Error: {e}")
@@ -82,8 +82,11 @@ if page == "🏠 Overview":
             with st.spinner("Checking alerts..."):
                 try:
                     from monitoring.alert_manager import AlertManager
+                    from monitoring.metrics_collector import MetricsCollector
+                    collector = MetricsCollector()
+                    metrics = collector.collect_all()
                     manager = AlertManager()
-                    manager.check_all()
+                    manager.process_alerts(metrics)
                     st.success("✓ Alerts checked")
                 except Exception as e:
                     st.error(f"✗ Error: {e}")
@@ -101,17 +104,17 @@ elif page == "🚀 Pipelines":
         with st.spinner(f"Running {pipeline}..."):
             try:
                 if "Fraud" in pipeline:
-                    from orchestration.fraud_streaming_dag import fraud_streaming_dag
-                    fraud_streaming_dag()
+                    from orchestration.fraud_streaming_dag import process_new_bronze_file
+                    process_new_bronze_file()
                 elif "Credit" in pipeline:
-                    from orchestration.credit_risk_batch_dag import credit_risk_batch_dag
-                    credit_risk_batch_dag()
+                    from orchestration.credit_risk_batch_dag import process_credit_risk_batch
+                    process_credit_risk_batch()
                 elif "Churn" in pipeline:
-                    from orchestration.churn_batch_dag import churn_batch_dag
-                    churn_batch_dag()
+                    from orchestration.churn_batch_dag import process_churn_batch
+                    process_churn_batch()
                 elif "Warehouse" in pipeline:
-                    from orchestration.warehouse_refresh_dag import warehouse_refresh_dag
-                    warehouse_refresh_dag()
+                    from orchestration.warehouse_refresh_dag import refresh_warehouse
+                    refresh_warehouse()
                 
                 st.success(f"✓ {pipeline} completed successfully")
                 st.balloons()
@@ -135,7 +138,10 @@ elif page == "🤖 ML Training":
                     from ml.fraud.training.train_fraud_model import train_fraud_model
                     train_fraud_model()
                 elif "Credit" in model:
-                    from ml.credit_risk.training.train_credit_risk_model import train_credit_risk_model
+                    import sys
+                    from pathlib import Path
+                    sys.path.append(str(Path.cwd() / 'ml' / 'credit-risk'))
+                    from training.train_credit_risk_model import train_credit_risk_model
                     train_credit_risk_model()
                 elif "Churn" in model:
                     from ml.churn.training.train_churn_model import train_churn_model
@@ -171,8 +177,11 @@ elif page == "📊 Monitoring":
             with st.spinner("Checking alerts..."):
                 try:
                     from monitoring.alert_manager import AlertManager
+                    from monitoring.metrics_collector import MetricsCollector
+                    collector = MetricsCollector()
+                    metrics = collector.collect_all()
                     manager = AlertManager()
-                    manager.check_all()
+                    manager.process_alerts(metrics)
                     st.success("✓ Alerts checked")
                 except Exception as e:
                     st.error(f"✗ Error: {e}")
@@ -189,9 +198,14 @@ elif page == "⚙️ Operations":
             with st.spinner("Running warehouse maintenance..."):
                 try:
                     from warehouse.maintenance import WarehouseMaintenance
-                    maintenance = WarehouseMaintenance()
-                    maintenance.run_all()
-                    st.success("✓ Maintenance completed")
+                    synapse_server = os.getenv('SYNAPSE_SERVER')
+                    database = os.getenv('SYNAPSE_DB')
+                    if not synapse_server or not database:
+                        st.error("SYNAPSE_SERVER and SYNAPSE_DB environment variables required")
+                    else:
+                        maintenance = WarehouseMaintenance(synapse_server, database)
+                        maintenance.vacuum_all_tables()
+                        st.success("✓ Maintenance completed")
                 except Exception as e:
                     st.error(f"✗ Error: {e}")
     

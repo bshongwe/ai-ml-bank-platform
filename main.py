@@ -17,6 +17,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
 
+AIRFLOW_NOTE = "NOTE: Airflow DAGs should be triggered via Airflow scheduler."
+DIRECT_EXEC_NOTE = "Executing pipeline tasks directly..."
+
+
 def start_api_server(host: str = "127.0.0.1", port: int = 8000):
     """Start FastAPI ML inference server (dev/test only)."""
     import uvicorn
@@ -45,35 +49,44 @@ def start_dashboard():
         sys.exit(1)
     
     print("Starting Streamlit dashboard...")
-    subprocess.run(["streamlit", "run", "streamlit_app.py"])
+    result = subprocess.run(["streamlit", "run", "streamlit_app.py"])
+    sys.exit(result.returncode)
 
 
 def run_fraud_pipeline():
     """Execute fraud detection streaming pipeline."""
-    from orchestration.fraud_streaming_dag import fraud_streaming_dag
     print("Running fraud detection pipeline...")
-    fraud_streaming_dag()
+    print(AIRFLOW_NOTE)
+    print(DIRECT_EXEC_NOTE)
+    from orchestration.fraud_streaming_dag import process_new_bronze_file
+    process_new_bronze_file()
 
 
 def run_credit_risk_pipeline():
     """Execute credit risk batch pipeline."""
-    from orchestration.credit_risk_batch_dag import credit_risk_batch_dag
     print("Running credit risk pipeline...")
-    credit_risk_batch_dag()
+    print(AIRFLOW_NOTE)
+    print(DIRECT_EXEC_NOTE)
+    from orchestration.credit_risk_batch_dag import process_credit_risk_batch
+    process_credit_risk_batch()
 
 
 def run_churn_pipeline():
     """Execute churn prediction batch pipeline."""
-    from orchestration.churn_batch_dag import churn_batch_dag
     print("Running churn prediction pipeline...")
-    churn_batch_dag()
+    print(AIRFLOW_NOTE)
+    print(DIRECT_EXEC_NOTE)
+    from orchestration.churn_batch_dag import process_churn_batch
+    process_churn_batch()
 
 
 def run_warehouse_refresh():
     """Execute warehouse refresh (Silver → Gold → Synapse)."""
-    from orchestration.warehouse_refresh_dag import warehouse_refresh_dag
     print("Running warehouse refresh...")
-    warehouse_refresh_dag()
+    print(AIRFLOW_NOTE)
+    print(DIRECT_EXEC_NOTE)
+    from orchestration.warehouse_refresh_dag import refresh_warehouse
+    refresh_warehouse()
 
 
 def train_fraud_model():
@@ -85,7 +98,10 @@ def train_fraud_model():
 
 def train_credit_risk_model():
     """Train credit risk model."""
-    from ml.credit_risk.training.train_credit_risk_model import train_credit_risk_model as train
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent / 'ml' / 'credit-risk'))
+    from training.train_credit_risk_model import train_credit_risk_model as train
     print("Training credit risk model...")
     train()
 
@@ -108,17 +124,24 @@ def collect_metrics():
 def check_alerts():
     """Check and process alerts."""
     from monitoring.alert_manager import AlertManager
+    from monitoring.metrics_collector import MetricsCollector
     print("Checking alerts...")
+    collector = MetricsCollector()
+    metrics = collector.collect_all()
     manager = AlertManager()
-    manager.check_all()
+    manager.process_alerts(metrics)
 
 
 def run_warehouse_maintenance():
     """Run warehouse maintenance (stats, indexes, archival)."""
     from warehouse.maintenance import WarehouseMaintenance
     print("Running warehouse maintenance...")
-    maintenance = WarehouseMaintenance()
-    maintenance.run_all()
+    synapse_server = os.getenv('SYNAPSE_SERVER')
+    database = os.getenv('SYNAPSE_DB')
+    if not synapse_server or not database:
+        raise ValueError("SYNAPSE_SERVER and SYNAPSE_DB environment variables required")
+    maintenance = WarehouseMaintenance(synapse_server, database)
+    maintenance.vacuum_all_tables()
 
 
 def generate_cost_report():
@@ -202,42 +225,46 @@ Examples:
     env = os.getenv('ENVIRONMENT', 'dev')
     print(f"Environment: {env}")
     
+    # Command dispatch table
+    commands = {
+        "dashboard": lambda: start_dashboard(),
+        "api": lambda: start_api_server(args.host, args.port),
+    }
+    
+    pipeline_commands = {
+        "fraud": run_fraud_pipeline,
+        "credit-risk": run_credit_risk_pipeline,
+        "churn": run_churn_pipeline,
+        "warehouse": run_warehouse_refresh,
+    }
+    
+    train_commands = {
+        "fraud": train_fraud_model,
+        "credit-risk": train_credit_risk_model,
+        "churn": train_churn_model,
+    }
+    
+    monitor_commands = {
+        "metrics": collect_metrics,
+        "alerts": check_alerts,
+    }
+    
+    ops_commands = {
+        "maintenance": run_warehouse_maintenance,
+        "cost-report": generate_cost_report,
+    }
+    
     try:
-        if args.command == "dashboard":
-            start_dashboard()
-        
-        elif args.command == "api":
-            start_api_server(args.host, args.port)
-        
+        if args.command in commands:
+            commands[args.command]()
         elif args.command == "pipeline":
-            if args.pipeline_type == "fraud":
-                run_fraud_pipeline()
-            elif args.pipeline_type == "credit-risk":
-                run_credit_risk_pipeline()
-            elif args.pipeline_type == "churn":
-                run_churn_pipeline()
-            elif args.pipeline_type == "warehouse":
-                run_warehouse_refresh()
-        
+            pipeline_commands[args.pipeline_type]()
         elif args.command == "train":
-            if args.model_type == "fraud":
-                train_fraud_model()
-            elif args.model_type == "credit-risk":
-                train_credit_risk_model()
-            elif args.model_type == "churn":
-                train_churn_model()
-        
+            train_commands[args.model_type]()
         elif args.command == "monitor":
-            if args.monitor_type == "metrics":
-                collect_metrics()
-            elif args.monitor_type == "alerts":
-                check_alerts()
-        
+            monitor_commands[args.monitor_type]()
         elif args.command == "ops":
-            if args.ops_type == "maintenance":
-                run_warehouse_maintenance()
-            elif args.ops_type == "cost-report":
-                generate_cost_report()
+            ops_commands[args.ops_type]()
         
         print("✓ Command completed successfully")
     
