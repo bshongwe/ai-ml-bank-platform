@@ -1,0 +1,132 @@
+{
+  "dashboard": {
+    "title": "Banking ML Platform - Production Monitoring",
+    "tags": ["banking", "ml", "production"],
+    "timezone": "UTC",
+    "panels": [
+      {
+        "id": 1,
+        "title": "API Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(api_requests_total[5m])",
+            "legendFormat": "{{method}} {{endpoint}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "API Latency (p95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(api_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Model Inference Latency",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(model_inference_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{model}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Fraud Detection Scores",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(fraud_scores_total[5m])",
+            "legendFormat": "{{decision}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Pipeline Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(pipeline_runs_success[1h]) / rate(pipeline_runs_total[1h]) * 100"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Model Drift Alerts",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(model_drift_detected)"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 16}
+      },
+      {
+        "id": 7,
+        "title": "ECS CPU Utilization",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "aws_ecs_service_cpu_utilization_average{service_name=\"api-service\"}",
+            "legendFormat": "API Service"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "ECS Memory Utilization",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "aws_ecs_service_memory_utilization_average{service_name=\"api-service\"}",
+            "legendFormat": "API Service"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16}
+      },
+      {
+        "id": 9,
+        "title": "Kinesis Stream Records",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "aws_kinesis_incoming_records_sum",
+            "legendFormat": "Incoming Records"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20}
+      },
+      {
+        "id": 10,
+        "title": "S3 Bronze Layer Size",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "aws_s3_bucket_size_bytes{bucket=\"banking-ml-bronze\"} / 1024 / 1024 / 1024",
+            "legendFormat": "GB"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    }
+  }
+}
