@@ -137,9 +137,8 @@ class KeyRotation:
         results.append(self.rotate_azure_keys())
         
         # Save rotation log
-        log_file = self.key_path / f"rotation_log_{
-            datetime.now(datetime.UTC).strftime('%Y%m%d_%H%M%S')
-        }.json"
+        timestamp = datetime.now(datetime.UTC).strftime('%Y%m%d_%H%M%S')
+        log_file = self.key_path / f"rotation_log_{timestamp}.json"
         with open(log_file, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2)
         

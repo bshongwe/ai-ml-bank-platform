@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deployment
+  namespace: banking-ml
+  labels:
+    app: banking-worker
+    tier: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: banking-worker
+  template:
+    metadata:
+      labels:
+        app: banking-worker
+        tier: worker
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: worker
+        image: gcr.io/banking-ml-prod/banking-worker:sha-${IMAGE_TAG}
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: BRONZE_PATH
+          value: "s3://banking-ml-bronze"
+        - name: SILVER_PATH
+          value: "s3://banking-ml-silver"
+        - name: MODEL_REGISTRY
+          value: "s3://banking-ml-models"
+        envFrom:
+        - secretRef:
+            name: banking-worker-secrets
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 4Gi
+            ephemeral-storage: "5Gi"
+          limits:
+            cpu: 4000m
+            memory: 16Gi
+            ephemeral-storage: "10Gi"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-training-fraud
+  namespace: banking-ml
+spec:
+  schedule: "0 2 * * 0"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          containers:
+          - name: trainer
+            image: gcr.io/banking-ml-prod/banking-worker:sha-${IMAGE_TAG}
+            command: ["python", "main.py", "train", "fraud"]
+            envFrom:
+            - secretRef:
+                name: banking-worker-secrets
+            resources:
+              requests:
+                cpu: 2000m
+                memory: 8Gi
+                ephemeral-storage: "10Gi"
+              limits:
+                cpu: 8000m
+                memory: 32Gi
+                ephemeral-storage: "20Gi"
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-training-credit-risk
+  namespace: banking-ml
+spec:
+  schedule: "0 3 * * 0"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          containers:
+          - name: trainer
+            image: gcr.io/banking-ml-prod/banking-worker:sha-${IMAGE_TAG}
+            command: ["python", "main.py", "train", "credit-risk"]
+            envFrom:
+            - secretRef:
+                name: banking-worker-secrets
+            resources:
+              requests:
+                cpu: 2000m
+                memory: 8Gi
+                ephemeral-storage: "10Gi"
+              limits:
+                cpu: 8000m
+                memory: 32Gi
+                ephemeral-storage: "20Gi"
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-training-churn
+  namespace: banking-ml
+spec:
+  schedule: "0 4 * * 0"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          automountServiceAccountToken: false
+          containers:
+          - name: trainer
+            image: gcr.io/banking-ml-prod/banking-worker:sha-${IMAGE_TAG}
+            command: ["python", "main.py", "train", "churn"]
+            envFrom:
+            - secretRef:
+                name: banking-worker-secrets
+            resources:
+              requests:
+                cpu: 2000m
+                memory: 8Gi
+                ephemeral-storage: "10Gi"
+              limits:
+                cpu: 8000m
+                memory: 32Gi
+                ephemeral-storage: "20Gi"
+          restartPolicy: OnFailure

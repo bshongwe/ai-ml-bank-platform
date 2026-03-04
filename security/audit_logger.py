@@ -32,9 +32,8 @@ class AuditLogger:
         }
         
         # Write to daily log file
-        log_file = self.log_path / f"audit_{
-            datetime.now(datetime.UTC).strftime('%Y%m%d')
-        }.jsonl"
+        date_str = datetime.now(datetime.UTC).strftime('%Y%m%d')
+        log_file = self.log_path / f"audit_{date_str}.jsonl"
         
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(event) + '\n')
