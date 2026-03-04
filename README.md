@@ -192,34 +192,65 @@ See [cost/cost_controls.yaml](cost/cost_controls.yaml).
 
 ## Quick Start
 
+### Development Environment
+
 ```bash
 # 1. Setup Python environment
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Configure paths (update with your values)
+# 2. Configure environment variables
 export BRONZE_PATH=/data/lake/bronze
 export SILVER_PATH=/data/lake/silver
 export MODEL_REGISTRY=/data/models
 export SYNAPSE_SERVER=bank-synapse.sql.azure.com
 export SYNAPSE_DB=analytics_warehouse
+export ENVIRONMENT=dev
 
-# 3. Run data pipelines
-airflow dags trigger fraud_streaming_dag      # Bronze → Silver
-airflow dags trigger warehouse_refresh_dag    # Silver → Gold → Synapse
+# 3. Start interactive dashboard (recommended for dev)
+python main.py dashboard
 
-# 4. Train ML models
-python ml/fraud/training/train_fraud_model.py
-python ml/credit-risk/training/train_credit_risk_model.py
-python ml/churn/training/train_churn_model.py
+# OR use CLI commands:
 
-# 5. Check monitoring & data quality
-python monitoring/metrics_collector.py
-python monitoring/alert_manager.py
+# Run data pipelines
+python main.py pipeline fraud
+python main.py pipeline credit-risk
+python main.py pipeline churn
+python main.py pipeline warehouse
 
-# 6. Run warehouse maintenance (weekly)
-python warehouse/maintenance.py
+# Train ML models
+python main.py train fraud
+python main.py train credit-risk
+python main.py train churn
+
+# Start API server
+python main.py api
+
+# Monitoring & operations
+python main.py monitor metrics
+python main.py monitor alerts
+python main.py ops maintenance
+python main.py ops cost-report
+```
+
+### Production Environment
+
+```bash
+# Production uses orchestration, not direct execution:
+
+# 1. Pipelines: Airflow scheduler triggers DAGs automatically
+airflow dags trigger fraud_streaming_dag
+airflow dags trigger warehouse_refresh_dag
+
+# 2. API: Kubernetes/ECS deployment
+kubectl apply -f k8s/api-deployment.yaml
+
+# 3. Training: Scheduled batch jobs
+# Triggered by Airflow or Kubernetes CronJob
+
+# 4. Monitoring: CloudWatch/Grafana dashboards
+# Automated metric collection via cron/CloudWatch Events
 ```
 
 ## Documentation
@@ -237,6 +268,8 @@ python warehouse/maintenance.py
 
 | Component | Purpose | Location |
 |-----------|---------|----------|
+| **Main Entry Point** | Unified CLI & dashboard launcher | `main.py` |
+| **Streamlit Dashboard** | Interactive dev UI | `streamlit_app.py` |
 | **Bronze Layer** | Immutable raw data | `lake/bronze/` |
 | **Silver Layer** | Validated features, PII masked | `lake/silver/` |
 | **Gold Layer** | Analytics-safe aggregates | `warehouse/` |
@@ -250,12 +283,13 @@ python warehouse/maintenance.py
 
 ## Platform Statistics
 
-- **Total Files**: 126 production-ready modules
+- **Total Files**: 128 production-ready modules
 - **Phases Complete**: 4/4 (Foundation, Pipelines, ML, Hardening)
 - **ML Models**: 3 (Fraud, Credit Risk, Churn)
 - **Cloud Providers**: 3 (AWS, GCP, Azure)
 - **Lakehouse Layers**: 3 (Bronze → Silver → Gold)
 - **DAGs**: 4 (Fraud streaming, Credit risk, Churn, Warehouse refresh)
+- **Entry Points**: 2 (CLI main.py, Dashboard streamlit_app.py)
 - **Recovery Scripts**: 2 (Bronze replay, Model rollback)
 - **Security Controls**: 3 (PII masking, Key rotation, Audit logs)
 
