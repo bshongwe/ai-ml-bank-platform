@@ -15,7 +15,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from api.crypto import SecurePayloadHandler, get_client_key
 from api.auth import APIKeyValidator
 from api.validation import (
-    ReplayProtection, DistributedRateLimiter, FraudScoreRequest
+    CombinedValidation, FraudScoreRequest
 )
 from ml.fraud.inference.fraud_scorer import FraudScorer
 from security.audit_logger import AuditLogger
@@ -23,8 +23,7 @@ from security.audit_logger import AuditLogger
 app = FastAPI(title="Banking ML API", version="1.0.0")
 
 validator = APIKeyValidator()
-rate_limiter = DistributedRateLimiter(requests_per_minute=100)
-replay_protection = ReplayProtection()
+combined_validator = CombinedValidation(requests_per_minute=100)
 audit_logger = AuditLogger()
 fraud_scorer = FraudScorer()
 
@@ -53,7 +52,7 @@ async def auth_middleware(request: Request, call_next):
     client_id = validator.validate(api_key)
     if not client_id:
         audit_logger.log_event(
-            "api_auth_failed",
+            "api_auth_failed", "api_key", "system",
             {"api_key_hash": api_key[:8], "ip": request.client.host}
         )
         return JSONResponse(
@@ -61,7 +60,7 @@ async def auth_middleware(request: Request, call_next):
             content={"error": "Invalid API key"}
         )
     
-    if not rate_limiter.allow(client_id):
+    if not combined_validator.validate_request(client_id, "", int(datetime.now(timezone.utc).timestamp())):
         return JSONResponse(
             status_code=429,
             content={"error": "Rate limit exceeded"}
@@ -71,9 +70,24 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-@app.post("/v1/fraud/score", response_model=EncryptedResponse)
+@app.post(
+    "/v1/fraud/score",
+    response_model=EncryptedResponse,
+    responses={
+        400: {"description": "Invalid input (malformed transaction data)"},
+        403: {"description": "Request rejected (replay attack or rate limit)"},
+        500: {"description": "Internal scoring error"}
+    }
+)
 async def score_fraud(request: Request, body: EncryptedRequest):
-    """Score transaction for fraud risk (real-time <100ms)."""
+    """Score transaction for fraud risk (real-time <100ms).
+    
+    Returns:
+        200: Fraud score successfully computed
+        400: Invalid input (malformed transaction data)
+        403: Request rejected (replay attack or rate limit)
+        500: Internal scoring error
+    """
     client_id = request.state.client_id
     
     try:
@@ -82,13 +96,12 @@ async def score_fraud(request: Request, body: EncryptedRequest):
         
         payload, nonce, timestamp = handler.decrypt(body.encrypted_payload)
         
-        # Replay attack prevention
-        if not replay_protection.validate_request(client_id, nonce, timestamp):
+        if not combined_validator.validate_request(client_id, nonce, timestamp):
             audit_logger.log_event(
-                "replay_attack_detected",
+                "replay_or_rate_limit", "api_request", client_id,
                 {"client_id": client_id, "nonce": nonce}
             )
-            raise HTTPException(status_code=403, detail="Replay attack detected")
+            raise HTTPException(status_code=403, detail="Request rejected")
         
         # Input validation
         try:
@@ -96,7 +109,7 @@ async def score_fraud(request: Request, body: EncryptedRequest):
             payload = validated.dict()
         except ValidationError as e:
             audit_logger.log_event(
-                "invalid_input",
+                "invalid_input", "api_request", client_id,
                 {"client_id": client_id, "errors": str(e)}
             )
             raise HTTPException(status_code=400, detail="Invalid input")
@@ -112,7 +125,7 @@ async def score_fraud(request: Request, body: EncryptedRequest):
         )
         
         audit_logger.log_event(
-            "fraud_score_request",
+            "fraud_score_request", "api_request", client_id,
             {
                 "client_id": client_id,
                 "decision": result.get("decision"),
@@ -125,7 +138,7 @@ async def score_fraud(request: Request, body: EncryptedRequest):
         raise
     except Exception as e:
         audit_logger.log_event(
-            "fraud_score_error",
+            "fraud_score_error", "api_request", client_id,
             {"client_id": client_id, "error": str(e)}
         )
         raise HTTPException(status_code=500, detail="Scoring failed")
@@ -142,4 +155,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

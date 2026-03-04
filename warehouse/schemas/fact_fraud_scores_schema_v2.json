@@ -1,0 +1,48 @@
+{
+  "transaction_id": {
+    "type": "string",
+    "max_length": 100,
+    "nullable": false,
+    "primary_key": true
+  },
+  "customer_id": {
+    "type": "string",
+    "max_length": 100,
+    "nullable": false,
+    "indexed": true
+  },
+  "fraud_score": {
+    "type": "float",
+    "nullable": false,
+    "min": 0.0,
+    "max": 1.0
+  },
+  "confidence": {
+    "type": "float",
+    "nullable": false,
+    "min": 0.0,
+    "max": 1.0
+  },
+  "model_version": {
+    "type": "string",
+    "max_length": 50,
+    "nullable": false
+  },
+  "event_time": {
+    "type": "timestamp",
+    "nullable": false,
+    "indexed": true,
+    "partition_key": true
+  },
+  "created_at": {
+    "type": "timestamp",
+    "nullable": false,
+    "default": "GETUTCDATE()"
+  },
+  "data_source": {
+    "type": "string",
+    "max_length": 100,
+    "nullable": false,
+    "default": "fraud_ml_model"
+  }
+}

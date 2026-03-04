@@ -11,6 +11,11 @@ from azure.storage.blob import BlobServiceClient
 class SynapseLoader:
     """Load Gold layer data into Azure Synapse Analytics."""
 
+    RESERVED_KEYWORDS = frozenset([
+        'SELECT', 'DROP', 'DELETE', 'INSERT', 'UPDATE', 'EXEC', 'EXECUTE',
+        'ALTER', 'CREATE', 'TRUNCATE', 'MERGE', 'UNION', 'GRANT', 'REVOKE'
+    ])
+
     def __init__(self, synapse_server: str, database: str, storage_account: str,
                  log_path: Path = Path('warehouse/load_stats.jsonl')):
         self.synapse_server = synapse_server
@@ -22,6 +27,18 @@ class SynapseLoader:
             account_url=f"https://{storage_account}.blob.core.windows.net",
             credential=self.credential
         )
+
+    def _validate_identifier(self, identifier: str) -> str:
+        """Validate SQL identifier to prevent injection."""
+        if not identifier:
+            raise ValueError("Identifier cannot be empty")
+        if len(identifier) > 128:
+            raise ValueError(f"Identifier too long: {identifier}")
+        if not identifier.replace('_', '').isalnum():
+            raise ValueError(f"Invalid SQL identifier: {identifier}")
+        if identifier.upper() in self.RESERVED_KEYWORDS:
+            raise ValueError(f"Reserved keyword not allowed: {identifier}")
+        return identifier
 
     def _get_connection(self) -> pyodbc.Connection:
         """Get Synapse connection using Azure AD auth."""
@@ -59,7 +76,8 @@ class SynapseLoader:
 
     def load_table(self, parquet_path: Path, table_name: str,
                    container: str, load_type: str = 'incremental') -> None:
-        """Load parquet into Synapse table."""
+        """Load parquet into Synapse table with optimized COPY."""
+        safe_table = self._validate_identifier(table_name)
         start_time = datetime.now(timezone.utc)
         blob_url = self._upload_to_blob(parquet_path, container)
 
@@ -67,20 +85,23 @@ class SynapseLoader:
         cursor = conn.cursor()
 
         if load_type == 'full':
-            cursor.execute(f"TRUNCATE TABLE {table_name}")
+            cursor.execute(f"TRUNCATE TABLE [{safe_table}]")
 
         copy_sql = f"""
-        COPY INTO {table_name}
+        COPY INTO [{safe_table}]
         FROM '{blob_url}'
         WITH (
             FILE_TYPE = 'PARQUET',
-            CREDENTIAL = (IDENTITY = 'Managed Identity')
+            CREDENTIAL = (IDENTITY = 'Managed Identity'),
+            MAXERRORS = 100,
+            COMPRESSION = 'SNAPPY',
+            PARALLEL = 8
         )
         """
         cursor.execute(copy_sql)
         conn.commit()
 
-        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+        cursor.execute(f"SELECT COUNT(*) FROM [{safe_table}]")
         count = cursor.fetchone()[0]
 
         duration = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -93,12 +114,29 @@ class SynapseLoader:
     def create_partitions(self, table_name: str, partition_col: str,
                           partition_scheme: str = 'DAILY') -> None:
         """Create table partitions for query performance."""
+        safe_table = self._validate_identifier(table_name)
+        self._validate_identifier(partition_col)
+        
         conn = self._get_connection()
         cursor = conn.cursor()
 
+        cursor.execute("""
+            SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = ? AND COLUMN_NAME = ?
+        """, (table_name, partition_col))
+        result = cursor.fetchone()
+        if not result:
+            raise ValueError(f"Column {partition_col} not found in {table_name}")
+        col_type = result[0].upper()
+
+        if col_type in ('DATE', 'DATETIME', 'DATETIME2'):
+            data_type = 'DATE' if col_type == 'DATE' else 'DATETIME2'
+        else:
+            raise ValueError(f"Unsupported partition column type: {col_type}")
+
         if partition_scheme == 'DAILY':
             partition_sql = f"""
-            CREATE PARTITION FUNCTION pf_{table_name} (DATE)
+            CREATE PARTITION FUNCTION pf_{safe_table} ({data_type})
             AS RANGE RIGHT FOR VALUES (
                 DATEADD(DAY, -30, CAST(GETDATE() AS DATE)),
                 DATEADD(DAY, -7, CAST(GETDATE() AS DATE)),
@@ -107,7 +145,7 @@ class SynapseLoader:
             """
         elif partition_scheme == 'WEEKLY':
             partition_sql = f"""
-            CREATE PARTITION FUNCTION pf_{table_name} (DATE)
+            CREATE PARTITION FUNCTION pf_{safe_table} ({data_type})
             AS RANGE RIGHT FOR VALUES (
                 DATEADD(WEEK, -12, CAST(GETDATE() AS DATE)),
                 DATEADD(WEEK, -4, CAST(GETDATE() AS DATE)),
@@ -120,12 +158,12 @@ class SynapseLoader:
         try:
             cursor.execute(partition_sql)
             cursor.execute(f"""
-                CREATE PARTITION SCHEME ps_{table_name}
-                AS PARTITION pf_{table_name}
+                CREATE PARTITION SCHEME ps_{safe_table}
+                AS PARTITION pf_{safe_table}
                 ALL TO ([PRIMARY])
             """)
             conn.commit()
-            print(f"Created {partition_scheme} partitions for {table_name}")
+            print(f"Created {partition_scheme} partitions on {partition_col} for {table_name}")
         except pyodbc.Error as e:
             if 'already exists' in str(e):
                 print(f"Partitions already exist for {table_name}")
