@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Development dashboard
+  dashboard:
+    build:
+      context: .
+      target: dev
+    ports:
+      - "8501:8501"
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=dev
+      - BRONZE_PATH=/data/lake/bronze
+      - SILVER_PATH=/data/lake/silver
+      - MODEL_REGISTRY=/data/models
+      - SYNAPSE_SERVER=${SYNAPSE_SERVER}
+      - SYNAPSE_DB=${SYNAPSE_DB}
+    volumes:
+      - .:/app
+      - data-volume:/data
+    command: python main.py dashboard
+
+  # API server
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - MODEL_REGISTRY=/data/models
+    volumes:
+      - data-volume:/data
+    command: python main.py api --host 0.0.0.0
+
+  # Pipeline worker
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      - ENVIRONMENT=production
+      - BRONZE_PATH=/data/lake/bronze
+      - SILVER_PATH=/data/lake/silver
+      - MODEL_REGISTRY=/data/models
+      - SYNAPSE_SERVER=${SYNAPSE_SERVER}
+      - SYNAPSE_DB=${SYNAPSE_DB}
+    volumes:
+      - data-volume:/data
+    command: python main.py pipeline warehouse
+
+volumes:
+  data-volume:

@@ -192,6 +192,25 @@ See [cost/cost_controls.yaml](cost/cost_controls.yaml).
 
 ## Quick Start
 
+### Docker (Recommended)
+
+```bash
+# 1. Build images
+docker-compose build
+
+# 2. Start development dashboard
+docker-compose up dashboard
+# Access at http://localhost:8501
+
+# 3. Or start API server
+docker-compose up api
+# Access at http://localhost:8000
+
+# 4. Run specific commands
+docker-compose run worker python main.py train fraud
+docker-compose run worker python main.py pipeline warehouse
+```
+
 ### Development Environment
 
 ```bash
