@@ -1,0 +1,99 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: banking-ml-platform
+  GCP_PROJECT: banking-ml-prod
+  AZURE_REGISTRY: bankingmlregistry
+
+jobs:
+  deploy-api:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+    
+    - name: Build and push API image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build --target api -t $ECR_REGISTRY/$ECR_REPOSITORY:api-$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:api-$IMAGE_TAG
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:api-$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:api-latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:api-latest
+    
+    - name: Deploy to ECS
+      run: |
+        aws ecs update-service \
+          --cluster banking-ml-cluster \
+          --service api-service \
+          --force-new-deployment
+
+  deploy-worker:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure GCP credentials
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+    
+    - name: Build and push worker image
+      env:
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        gcloud auth configure-docker
+        docker build --target worker -t gcr.io/$GCP_PROJECT/banking-worker:$IMAGE_TAG .
+        docker push gcr.io/$GCP_PROJECT/banking-worker:$IMAGE_TAG
+        docker tag gcr.io/$GCP_PROJECT/banking-worker:$IMAGE_TAG gcr.io/$GCP_PROJECT/banking-worker:latest
+        docker push gcr.io/$GCP_PROJECT/banking-worker:latest
+    
+    - name: Deploy to GKE
+      run: |
+        gcloud container clusters get-credentials ml-cluster --region us-central1
+        kubectl set image deployment/worker-deployment worker=gcr.io/$GCP_PROJECT/banking-worker:${{ github.sha }}
+        kubectl rollout status deployment/worker-deployment
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-results.sarif'

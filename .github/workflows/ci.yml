@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8
+    
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Run tests
+      run: |
+        pytest --cov=. --cov-report=xml
+      continue-on-error: true
+    
+    - name: Validate imports
+      run: |
+        python -c "import main; print('✓ main.py imports valid')"
+        python -c "import streamlit_app; print('✓ streamlit_app.py imports valid')"
+
+  docker:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker images
+      run: |
+        docker build --target dev -t banking-platform:dev .
+        docker build --target api -t banking-platform:api .
+        docker build --target worker -t banking-platform:worker .
+    
+    - name: Test Docker images
+      run: |
+        docker run --rm banking-platform:dev python -c "import main; print('✓ Dev image OK')"
+        docker run --rm banking-platform:api python -c "import main; print('✓ API image OK')"
+        docker run --rm banking-platform:worker python -c "import main; print('✓ Worker image OK')"

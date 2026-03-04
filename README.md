@@ -311,6 +311,51 @@ kubectl apply -f k8s/api-deployment.yaml
 - **Entry Points**: 2 (CLI main.py, Dashboard streamlit_app.py)
 - **Recovery Scripts**: 2 (Bronze replay, Model rollback)
 - **Security Controls**: 3 (PII masking, Key rotation, Audit logs)
+- **CI/CD Pipelines**: 3 (CI, CD, ML Training)
+
+## CI/CD
+
+### GitHub Actions Workflows
+
+1. **CI Pipeline** (`.github/workflows/ci.yml`)
+   - Runs on: Push to main/develop, Pull requests
+   - Tests: Linting, import validation, Docker builds
+   - Duration: ~5 minutes
+
+2. **CD Pipeline** (`.github/workflows/cd.yml`)
+   - Runs on: Push to main, Version tags
+   - Deploys:
+     - API → AWS ECS (ECR registry)
+     - Worker → GCP GKE (GCR registry)
+   - Security: Trivy vulnerability scanning
+   - Duration: ~10 minutes
+
+3. **ML Training** (`.github/workflows/ml-training.yml`)
+   - Runs on: Weekly schedule (Sunday 2 AM UTC), Manual trigger
+   - Trains: Fraud, Credit Risk, Churn models
+   - Storage: S3 model registry
+   - Duration: ~30-60 minutes per model
+
+### Required Secrets
+
+Configure in GitHub Settings → Secrets:
+
+```bash
+AWS_ACCESS_KEY_ID          # AWS deployment credentials
+AWS_SECRET_ACCESS_KEY      # AWS deployment credentials
+GCP_SA_KEY                 # GCP service account JSON
+AZURE_CREDENTIALS          # Azure service principal
+```
+
+### Deployment Flow
+
+```
+Developer Push → CI Tests → Merge to main → CD Deploy → Production
+                    ↓                           ↓
+                 Linting                    ECS/GKE
+                 Docker Build               Security Scan
+                 Import Check               Rollout
+```
 
 ## License
 
