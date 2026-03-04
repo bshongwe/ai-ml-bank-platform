@@ -70,9 +70,24 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-@app.post("/v1/fraud/score", response_model=EncryptedResponse)
+@app.post(
+    "/v1/fraud/score",
+    response_model=EncryptedResponse,
+    responses={
+        400: {"description": "Invalid input (malformed transaction data)"},
+        403: {"description": "Request rejected (replay attack or rate limit)"},
+        500: {"description": "Internal scoring error"}
+    }
+)
 async def score_fraud(request: Request, body: EncryptedRequest):
-    """Score transaction for fraud risk (real-time <100ms)."""
+    """Score transaction for fraud risk (real-time <100ms).
+    
+    Returns:
+        200: Fraud score successfully computed
+        400: Invalid input (malformed transaction data)
+        403: Request rejected (replay attack or rate limit)
+        500: Internal scoring error
+    """
     client_id = request.state.client_id
     
     try:
@@ -140,4 +155,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

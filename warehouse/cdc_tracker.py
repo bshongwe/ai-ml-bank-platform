@@ -63,8 +63,8 @@ class CDCTracker:
     def filter_new_records(self, df: pd.DataFrame, table: str,
                           time_col: str) -> pd.DataFrame:
         """Filter to only new records since last load."""
-        last_ts = pd.to_datetime(self.get_last_processed(table))
-        df[time_col] = pd.to_datetime(df[time_col])
+        last_ts = pd.to_datetime(self.get_last_processed(table), utc=True)
+        df[time_col] = pd.to_datetime(df[time_col], utc=True)
         df_sorted = df.sort_values(time_col)
         new_df = df_sorted[df_sorted[time_col] > last_ts].copy()
         if len(new_df) > 0:
