@@ -4,7 +4,7 @@ Schema validation, quality checks, anomaly detection.
 """
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 
 class FeatureValidator:
     def __init__(self, schema: Dict[str, Any]):
