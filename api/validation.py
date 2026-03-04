@@ -28,8 +28,7 @@ class CombinedValidation:
     
     def __init__(self, requests_per_minute: int = 100):
         self.rpm = requests_per_minute
-        self.dynamodb = boto3.resource('dynamodb')
-        self.table = self.dynamodb.Table('api_validation')
+        self.dynamodb_client = boto3.client('dynamodb')
     
     def validate_request(self, client_id: str, nonce: str,
                         timestamp: int) -> bool:
@@ -42,15 +41,15 @@ class CombinedValidation:
         minute_bucket = now // 60
         
         try:
-            self.table.transact_write_items(
+            self.dynamodb_client.transact_write_items(
                 TransactItems=[
                     {
                         'Put': {
                             'TableName': 'api_validation',
                             'Item': {
-                                'pk': f'nonce#{client_id}',
-                                'sk': nonce,
-                                'ttl': now + self.WINDOW_SECONDS
+                                'pk': {'S': f'nonce#{client_id}'},
+                                'sk': {'S': nonce},
+                                'ttl': {'N': str(now + self.WINDOW_SECONDS)}
                             },
                             'ConditionExpression': 'attribute_not_exists(sk)'
                         }
@@ -59,15 +58,15 @@ class CombinedValidation:
                         'Update': {
                             'TableName': 'api_validation',
                             'Key': {
-                                'pk': f'rate#{client_id}',
-                                'sk': str(minute_bucket)
+                                'pk': {'S': f'rate#{client_id}'},
+                                'sk': {'S': str(minute_bucket)}
                             },
                             'UpdateExpression': 'ADD request_count :inc SET #ttl = :ttl',
                             'ExpressionAttributeNames': {'#ttl': 'ttl'},
                             'ExpressionAttributeValues': {
-                                ':inc': 1,
-                                ':ttl': now + 120,
-                                ':limit': self.rpm
+                                ':inc': {'N': '1'},
+                                ':ttl': {'N': str(now + 120)},
+                                ':limit': {'N': str(self.rpm)}
                             },
                             'ConditionExpression': 'attribute_not_exists(request_count) OR request_count < :limit'
                         }
@@ -75,6 +74,8 @@ class CombinedValidation:
                 ]
             )
             return True
+        except self.dynamodb_client.exceptions.TransactionCanceledException:
+            return False
         except Exception:
             return False
 

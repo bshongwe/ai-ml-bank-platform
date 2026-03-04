@@ -55,8 +55,10 @@ class PartitionManager:
 
         try:
             cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {table_name}_archive
-                LIKE {table_name}
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{table_name}_archive')
+                BEGIN
+                    SELECT * INTO {table_name}_archive FROM {table_name} WHERE 1=0
+                END
             """)
 
             cursor.execute(f"""

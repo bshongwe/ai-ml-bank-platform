@@ -56,8 +56,13 @@ class DimAccountETL:
                       row['account_type'], row['account_status'],
                       row['balance'], now))
             else:
-                if (existing[1] != row['account_status'] or
-                    abs(existing[2] - row['balance']) > 0.01):
+                status_changed = existing[1] != row['account_status']
+                
+                existing_balance = float(existing[2]) if existing[2] is not None else 0.0
+                new_balance = float(row['balance']) if pd.notna(row['balance']) else 0.0
+                balance_changed = abs(existing_balance - new_balance) > 0.01
+                
+                if status_changed or balance_changed:
                     cursor.execute("""
                         UPDATE dim_account
                         SET is_current = 0, valid_to = ?, updated_at = ?

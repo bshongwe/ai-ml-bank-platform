@@ -52,12 +52,18 @@ async def auth_middleware(request: Request, call_next):
     client_id = validator.validate(api_key)
     if not client_id:
         audit_logger.log_event(
-            "api_auth_failed",
+            "api_auth_failed", "api_key", "system",
             {"api_key_hash": api_key[:8], "ip": request.client.host}
         )
         return JSONResponse(
             status_code=403,
             content={"error": "Invalid API key"}
+        )
+    
+    if not combined_validator.validate_request(client_id, "", int(datetime.now(timezone.utc).timestamp())):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Rate limit exceeded"}
         )
     
     request.state.client_id = client_id
@@ -77,7 +83,7 @@ async def score_fraud(request: Request, body: EncryptedRequest):
         
         if not combined_validator.validate_request(client_id, nonce, timestamp):
             audit_logger.log_event(
-                "replay_or_rate_limit",
+                "replay_or_rate_limit", "api_request", client_id,
                 {"client_id": client_id, "nonce": nonce}
             )
             raise HTTPException(status_code=403, detail="Request rejected")
@@ -88,7 +94,7 @@ async def score_fraud(request: Request, body: EncryptedRequest):
             payload = validated.dict()
         except ValidationError as e:
             audit_logger.log_event(
-                "invalid_input",
+                "invalid_input", "api_request", client_id,
                 {"client_id": client_id, "errors": str(e)}
             )
             raise HTTPException(status_code=400, detail="Invalid input")
@@ -104,7 +110,7 @@ async def score_fraud(request: Request, body: EncryptedRequest):
         )
         
         audit_logger.log_event(
-            "fraud_score_request",
+            "fraud_score_request", "api_request", client_id,
             {
                 "client_id": client_id,
                 "decision": result.get("decision"),
@@ -117,7 +123,7 @@ async def score_fraud(request: Request, body: EncryptedRequest):
         raise
     except Exception as e:
         audit_logger.log_event(
-            "fraud_score_error",
+            "fraud_score_error", "api_request", client_id,
             {"client_id": client_id, "error": str(e)}
         )
         raise HTTPException(status_code=500, detail="Scoring failed")
