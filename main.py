@@ -226,46 +226,32 @@ Examples:
     print(f"Environment: {env}")
     
     # Command dispatch table
-    commands = {
+    dispatch = {
         "dashboard": lambda: start_dashboard(),
         "api": lambda: start_api_server(args.host, args.port),
-    }
-    
-    pipeline_commands = {
-        "fraud": run_fraud_pipeline,
-        "credit-risk": run_credit_risk_pipeline,
-        "churn": run_churn_pipeline,
-        "warehouse": run_warehouse_refresh,
-    }
-    
-    train_commands = {
-        "fraud": train_fraud_model,
-        "credit-risk": train_credit_risk_model,
-        "churn": train_churn_model,
-    }
-    
-    monitor_commands = {
-        "metrics": collect_metrics,
-        "alerts": check_alerts,
-    }
-    
-    ops_commands = {
-        "maintenance": run_warehouse_maintenance,
-        "cost-report": generate_cost_report,
+        "pipeline": lambda: {
+            "fraud": run_fraud_pipeline,
+            "credit-risk": run_credit_risk_pipeline,
+            "churn": run_churn_pipeline,
+            "warehouse": run_warehouse_refresh,
+        }[args.pipeline_type](),
+        "train": lambda: {
+            "fraud": train_fraud_model,
+            "credit-risk": train_credit_risk_model,
+            "churn": train_churn_model,
+        }[args.model_type](),
+        "monitor": lambda: {
+            "metrics": collect_metrics,
+            "alerts": check_alerts,
+        }[args.monitor_type](),
+        "ops": lambda: {
+            "maintenance": run_warehouse_maintenance,
+            "cost-report": generate_cost_report,
+        }[args.ops_type](),
     }
     
     try:
-        if args.command in commands:
-            commands[args.command]()
-        elif args.command == "pipeline":
-            pipeline_commands[args.pipeline_type]()
-        elif args.command == "train":
-            train_commands[args.model_type]()
-        elif args.command == "monitor":
-            monitor_commands[args.monitor_type]()
-        elif args.command == "ops":
-            ops_commands[args.ops_type]()
-        
+        dispatch[args.command]()
         print("✓ Command completed successfully")
     
     except Exception as e:
