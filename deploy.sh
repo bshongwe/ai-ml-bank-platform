@@ -12,9 +12,16 @@ echo "Environment: $ENVIRONMENT"
 echo "AWS Region: $AWS_REGION"
 echo "=========================================="
 
-# Step 1: Deploy AWS Infrastructure with Terraform
+# Step 1: Package Lambda function first
 echo ""
-echo "[1/6] Deploying AWS infrastructure..."
+echo "[1/6] Packaging Lambda function..."
+cd ingestion/streaming
+zip -r ../../lambda_deployment.zip lambda_handler.py
+cd ../..
+
+# Step 2: Deploy AWS Infrastructure with Terraform
+echo ""
+echo "[2/6] Deploying AWS infrastructure..."
 cd terraform
 terraform init
 terraform plan -var="environment=$ENVIRONMENT" -var="aws_region=$AWS_REGION"
@@ -27,53 +34,52 @@ else
 fi
 cd ..
 
-# Step 2: Build and Push Docker Images
+# Step 3: Build and Push Docker Images
 echo ""
-echo "[2/6] Building Docker images..."
-docker build --target api -t banking-ml-api:latest .
-docker build --target worker -t banking-ml-worker:latest .
+echo "[3/6] Building Docker images..."
+IMAGE_TAG=$(git rev-parse --short HEAD)
+echo "Using image tag: $IMAGE_TAG"
 
-echo "Pushing to ECR..."
+docker build --target api -t banking-ml-api:$IMAGE_TAG .
+docker build --target worker -t banking-ml-worker:$IMAGE_TAG .
+
+echo "Pushing to ECR and GCR..."
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-docker tag banking-ml-api:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/banking-ml-platform:api-latest
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/banking-ml-platform:api-latest
+# Push API to ECR
+docker tag banking-ml-api:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/banking-ml-platform:api-$IMAGE_TAG
+docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/banking-ml-platform:api-$IMAGE_TAG
 
-# Step 3: Deploy to GKE (if using Kubernetes)
+# Push worker to GCR
+gcloud auth configure-docker
+docker tag banking-ml-worker:$IMAGE_TAG gcr.io/banking-ml-prod/banking-worker:sha-$IMAGE_TAG
+docker push gcr.io/banking-ml-prod/banking-worker:sha-$IMAGE_TAG
+
+# Step 4: Deploy to GKE (if using Kubernetes)
 echo ""
-echo "[3/6] Deploying to Kubernetes..."
+echo "[4/6] Deploying to Kubernetes..."
 read -p "Deploy to GKE? (yes/no): " deploy_k8s
 if [ "$deploy_k8s" == "yes" ]; then
     gcloud container clusters get-credentials ml-cluster --region us-central1
     
-    kubectl apply -f k8s/namespace-secrets.yaml
-    kubectl apply -f k8s/api-deployment.yaml
-    kubectl apply -f k8s/worker-deployment.yaml
+    # Substitute IMAGE_TAG in manifests
+    export IMAGE_TAG
+    envsubst < k8s/namespace-secrets.yaml | kubectl apply -f -
+    envsubst < k8s/api-deployment.yaml | kubectl apply -f -
+    envsubst < k8s/worker-deployment.yaml | kubectl apply -f -
     
     echo "Waiting for rollout..."
     kubectl rollout status deployment/banking-api -n banking-ml
 fi
 
-# Step 4: Deploy Azure Synapse Schema
+# Step 5: Deploy Azure Synapse Schema
 echo ""
-echo "[4/6] Deploying Azure Synapse schema..."
+echo "[5/6] Deploying Azure Synapse schema..."
 read -p "Deploy Synapse schema? (yes/no): " deploy_synapse
 if [ "$deploy_synapse" == "yes" ]; then
     bash warehouse/ddl/deploy_schema.sh
 fi
-
-# Step 5: Package and Deploy Lambda
-echo ""
-echo "[5/6] Deploying Lambda function..."
-cd ingestion/streaming
-zip -r ../../lambda_deployment.zip lambda_handler.py
-cd ../..
-
-aws lambda update-function-code \
-    --function-name fraud-stream-processor-$ENVIRONMENT \
-    --zip-file fileb://lambda_deployment.zip \
-    --region $AWS_REGION
 
 # Step 6: Verify Deployment
 echo ""

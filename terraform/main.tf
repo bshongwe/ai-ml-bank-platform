@@ -152,7 +152,7 @@ resource "aws_ecs_cluster" "banking_ml" {
 
 # ECR Repository
 resource "aws_ecr_repository" "api" {
-  name                 = "banking-ml-api"
+  name                 = "banking-ml-platform"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {

@@ -44,7 +44,7 @@ jobs:
     - name: Deploy to ECS
       run: |
         aws ecs update-service \
-          --cluster banking-ml-cluster \
+          --cluster banking-ml-cluster-production \
           --service api-service \
           --force-new-deployment
 
@@ -76,8 +76,8 @@ jobs:
     - name: Deploy to GKE
       run: |
         gcloud container clusters get-credentials ml-cluster --region us-central1
-        kubectl set image deployment/worker-deployment worker=gcr.io/$GCP_PROJECT/banking-worker:${{ github.sha }}
-        kubectl rollout status deployment/worker-deployment
+        kubectl set image deployment/worker-deployment worker=gcr.io/$GCP_PROJECT/banking-worker:${{ github.sha }} -n banking-ml
+        kubectl rollout status deployment/worker-deployment -n banking-ml
 
   security-scan:
     runs-on: ubuntu-latest
@@ -86,7 +86,7 @@ jobs:
     - uses: actions/checkout@v4
     
     - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@0.28.0
       with:
         scan-type: 'fs'
         scan-ref: '.'
